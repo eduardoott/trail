@@ -1,0 +1,103 @@
+{
+  "name": "trail",
+  "version": "0.1.0",
+  "description": "Trail: uma aba de árvore de arquivos por repo git, o da sessão e os de fora, que segue o Claude e mostra o rastro do que ele leu e editou",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "abaSegue": {
+      "type": "string",
+      "title": "Aba segue o Claude",
+      "description": "on: a aba do repo onde o Claude lê, edita ou roda comando vem para a frente sozinha. off: as abas só mudam quando você clica.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "abaDaSessao": {
+      "type": "string",
+      "title": "Aba do repo da sessão",
+      "description": "on: ao iniciar a sessão, abre também uma aba para o repo onde a sessão roda, para a troca automática alcançar ele. off: só abre o que você pedir com /trail abrir.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "leitura": {
+      "type": "string",
+      "title": "Leitura também",
+      "description": "sim: a aba abre (ou o cartão aparece, no modo cartão) também quando o Claude só lê (Read, Grep, cat, grep, ls, Get-Content). não: só quando ele escreve.",
+      "default": "sim",
+      "options": [
+        "sim",
+        "não"
+      ]
+    },
+    "glyphs": {
+      "type": "string",
+      "title": "Ícones",
+      "description": "auto: ícones Nerd Font quando houver um instalado, menos no app desktop. nerd: sempre Nerd Font. plain: só Unicode.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "nerd",
+        "plain"
+      ]
+    },
+    "column": {
+      "type": "string",
+      "title": "Coluna da direita",
+      "description": "O que a coluna da direita mostra ao abrir a aba: date (última modificação) ou size (tamanho). O botão Σ no topo troca.",
+      "default": "date",
+      "options": [
+        "date",
+        "size"
+      ]
+    },
+    "diagnostico": {
+      "type": "string",
+      "title": "Linha de diagnóstico",
+      "description": "on: escreve na conversa uma linha cinza cada vez que o mod traz uma aba para a frente. off: só no log de debug.",
+      "default": "off",
+      "options": [
+        "off",
+        "on"
+      ]
+    },
+    "animacao": {
+      "type": "string",
+      "title": "Animação do replay",
+      "description": "clássico: o replay de sempre, acende cada comando por 2 s. moderno: barra que navega até o arquivo, pastas abrindo filho a filho, ícone de lupa ou lápis, contadores.",
+      "default": "moderno",
+      "options": [
+        "clássico",
+        "moderno"
+      ]
+    },
+    "aoVivo": {
+      "type": "string",
+      "title": "Animação ao vivo",
+      "description": "animado: cada leitura ou edição do Claude toca na aba a versão curta da animação do replay (só no moderno). instantâneo: a luz acende na hora, como antes.",
+      "default": "animado",
+      "options": [
+        "animado",
+        "instantâneo"
+      ]
+    },
+    "abertura": {
+      "type": "string",
+      "title": "Como a aba abre",
+      "description": "sozinha: a primeira edição do Claude num repo git abre a aba dele, e aba fechada à mão volta na próxima edição. cartão: como antes, um cartão pede permissão na primeira escrita num repo de fora e aba fechada fica fechada na sessão.",
+      "default": "sozinha",
+      "options": [
+        "sozinha",
+        "cartão"
+      ]
+    }
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Eduardo Ott"
+  }
+}

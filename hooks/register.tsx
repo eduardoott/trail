@@ -107,8 +107,8 @@ let replayAnimation: 'classic' | 'modern' = 'modern'
 // liveAnimation (modern only): animated plays each live light as the short replay of its step; instant lights at once, as before.
 let liveAnimation: 'animated' | 'instant' = 'animated'
 const liveOn = () => replayAnimation === 'modern' && liveAnimation === 'animated'
-// The header button cycles the replay's speed: it scales the whole tick (2x, a tick of 25 ms; 0.5x, of 100 ms).
-const SPEEDS = [1, 2, 0.5, 0.25] as const
+// The header button cycles the replay's speed: it scales the whole tick (2x, a tick of 25 ms; 5x, of 10 ms; 0.5x, of 100 ms).
+const SPEEDS = [1, 2, 5, 0.5, 0.25] as const
 let speed: number = 1
 // modern: the icon of each kind of step, in the place of the row's glyph while it plays.
 const ICONS: Record<Kind, { nerd: string; plain: string }> = {
@@ -2057,7 +2057,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   const latest = [...live].reverse().find(a => a.state === 'running') ?? live[live.length - 1]
   // The live run of 2 files or more, while it plays: the one playing (or lit at once) of all queued since the queue was empty.
   const run = s.live && (s.live.step || s.live.queue.length) && s.live.run.total >= 2 ? s.live.run : null
-  const runText = run ? `▸ ${Math.min(run.done, run.total)} de ${run.total}` : ''
+  const runText = run ? `▸ ${Math.min(run.done, run.total)} of ${run.total}` : ''
   const bright =new Set(t.flashOn ? t.flash : [])
   const dimmed = new Set(t.flashOn ? t.flashDim : [])
   const ignored = new Set(t.ignored)

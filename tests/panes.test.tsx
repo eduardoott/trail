@@ -795,6 +795,7 @@ test('at 0.5x the same step takes twice the time, tick by tick', { options: { se
   const tone = async () => nameSeg(rowOf(await specs(ui), 'wsl-only.md'), 'wsl-only.md')?.c
   await ui.press({ key: 'speed' })
   await ui.press({ key: 'speed' })
+  await ui.press({ key: 'speed' })
   try {
     expect(JSON.stringify(await ui.drawn())).toContain('0.5x')
     await $.prompt.submit({ text: 'x' } as any)
@@ -830,6 +831,37 @@ test('at 2x the same step takes half the time', { options: { sessionTab: 'off', 
     await clock.advance((LIT / 2 - 1) * TICK)
     expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
     await clock.advance(TICK)
+    expect(JSON.stringify(await ui.drawn())).not.toContain('■ 1/1')
+  } finally {
+    await ui.press({ key: 'speed' })
+    await ui.press({ key: 'speed' })
+    await ui.press({ key: 'speed' })
+    await ui.press({ key: 'speed' })
+  }
+})
+
+// At 5x each frame takes a fifth of the ms: a tick of TICK / 5, sampled tick by tick.
+test('at 5x the same step takes a fifth of the time, tick by tick', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  const ramp = RAMPS.purple!
+  const fast = TICK / 5
+  const tone = async () => nameSeg(rowOf(await specs(ui), 'wsl-only.md'), 'wsl-only.md')?.c
+  await ui.press({ key: 'speed' })
+  await ui.press({ key: 'speed' })
+  try {
+    expect(JSON.stringify(await ui.drawn())).toContain('"label":"5x"')
+    await $.prompt.submit({ text: 'x' } as any)
+    await command(clock, gate, read('wsl-only.md'))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    await ui.press({ key: 'replay-last' })
+    await clock.advance(2 * fast)
+    expect(await tone()).toBe(ramp[1])
+    await clock.advance(fast)
+    expect(await tone()).toBe(ramp[2])
+    await clock.advance((LIT - 3 - 1) * fast)
+    expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
+    await clock.advance(fast)
     expect(JSON.stringify(await ui.drawn())).not.toContain('■ 1/1')
   } finally {
     await ui.press({ key: 'speed' })
@@ -1264,7 +1296,7 @@ async function litTicks(clock: any, ui: any, names: string[], limit: number): Pr
 }
 // One shell command reading these files of the repo's root, all in one light.
 const catAll = ($: any, names: string[]) => $.tool.call({ tool: 'Bash', command: `cat ${names.map(name => `//wsl.localhost/Ubuntu/home/user/my-repo/${name}`).join(' ')}` } as any)
-const runOf = async (ui: any) => JSON.stringify(await ui.drawn()).match(/▸ (\d+) de (\d+)/)?.slice(1).map(Number) ?? null
+const runOf = async (ui: any) => JSON.stringify(await ui.drawn()).match(/▸ (\d+) of (\d+)/)?.slice(1).map(Number) ?? null
 
 test('live: eight Reads at once play one at a time, each on its own tick, all lit within 80 ticks', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!

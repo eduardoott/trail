@@ -2407,3 +2407,93 @@ test('the replay of a read in a big folder reveals the 7 rows and the blocks, no
     DIRS[dbId] = db
   }
 })
+
+// The git activity chip rides on the branch row, which pulses in the action's tone while the action runs.
+function nodesOf(node: any): any[] {
+  if (!node || typeof node !== 'object') return []
+  const kids = Array.isArray(node) ? node : (node.children ?? [])
+  return [...(Array.isArray(node) ? [] : [node]), ...kids.flatMap((kid: any) => nodesOf(kid))]
+}
+const branchRowOf = (drawn: any): any => nodesOf(drawn).find(n => n.type === 'Box' && n.props?.height === 1 && nodesOf(n).some(x => x.type === 'Text' && x.children?.[0] === 'main'))
+const branchColor = (drawn: any): string | undefined => nodesOf(drawn).find(n => n.type === 'Text' && n.children?.[0] === 'main')?.props?.color
+const count = (text: string, needle: string) => text.split(needle).length - 1
+const COMMIT = 'git -C /home/user/my-repo commit -m x'
+
+test('a running git commit draws its chip on the branch row, not in the footer, and committed once it resolves', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.result = { result: { text: 'ok', isError: false, gitOperation: { commit: { sha: 'abc1234def' } } } }
+  const call = $.tool.call({ tool: 'Bash', command: COMMIT } as any)
+  await clock.settle()
+  const drawn = await ui.drawn()
+  expect(JSON.stringify(branchRowOf(drawn))).toContain('committing…')
+  expect(count(JSON.stringify(drawn), 'committing…')).toBe(1)
+  gate.release()
+  await call
+  await clock.settle()
+  const after = await ui.drawn()
+  expect(JSON.stringify(branchRowOf(after))).toContain('committed')
+  expect(JSON.stringify(after)).not.toContain('committing…')
+  expect(count(JSON.stringify(after), 'committed')).toBe(1)
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.settle()
+})
+
+test('the branch name pulses 2 3 4 3 on the green ramp every 4 ticks while the commit runs, and stops when it resolves', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  const green = RAMPS.green!
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.result = { result: { text: 'ok', isError: false, gitOperation: { commit: { sha: 'abc1234def' } } } }
+  const call = $.tool.call({ tool: 'Bash', command: COMMIT } as any)
+  await clock.settle()
+  const seen: (string | undefined)[] = [branchColor(await ui.drawn())]
+  for (let i = 0; i < 3; i++) {
+    await clock.advance(4 * TICK)
+    seen.push(branchColor(await ui.drawn()))
+  }
+  expect(seen).toEqual([green[2], green[3], green[4], green[3]])
+  gate.release()
+  await call
+  await clock.settle()
+  // The live step of the commit plays over the row and settles: past it, samples 4 ticks apart stay the same
+  // (a pulse still on would change on every frame: 2 3 4 3 never repeats in two frames in a row).
+  await clock.advance(60 * TICK)
+  const still = branchColor(await ui.drawn())
+  for (let i = 0; i < 3; i++) {
+    await clock.advance(4 * TICK)
+    expect(branchColor(await ui.drawn())).toBe(still)
+  }
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.settle()
+})
+
+test('liveAnimation instant draws the running chip on the branch row without a pulse', { options: { ...LIVE_OPTIONS, liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  const call = $.tool.call({ tool: 'Bash', command: COMMIT } as any)
+  await clock.settle()
+  const drawn = await ui.drawn()
+  expect(JSON.stringify(branchRowOf(drawn))).toContain('committing…')
+  const first = branchColor(drawn)
+  await clock.advance(8 * TICK)
+  expect(branchColor(await ui.drawn())).toBe(first)
+  gate.release()
+  await call
+  await clock.settle()
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.settle()
+})
+
+test('a failing push draws push failed in red on the branch row', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.fail = true
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo push' } as any))
+  await clock.settle()
+  const row = branchRowOf(await ui.drawn())
+  expect(JSON.stringify(row)).toContain('push failed')
+  const label = nodesOf(row).find(n => n.type === 'Text' && n.children?.[0] === 'push failed')
+  expect(label?.props?.color).toBe('#f87171')
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.settle()
+})

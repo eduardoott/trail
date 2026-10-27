@@ -421,7 +421,13 @@ type Instance = {
   live: Live | null
   // The ramp of each row the live light lit (files) or dimmed on their way (folders): kept past the player, to the light's end.
   lit: Record<string, string>
+  pulse: Pulse | null
 }
+
+// The branch row's pulse while a git action runs: tone 2 3 4 3 of the action's ramp, a frame every 4 ticks.
+type Pulse = { timer: Timer | null; frame: number }
+const PULSE_TONES = [2, 3, 4, 3] as const
+const PULSE_TICKS = 4
 
 // Everything filetree kept in module variables, one copy per repo root.
 function makeInstance(repo: Repo): Instance {
@@ -459,6 +465,7 @@ function makeInstance(repo: Repo): Instance {
     replay: null,
     live: null,
     lit: {},
+    pulse: null,
   }
 }
 
@@ -1392,6 +1399,40 @@ function stopLive(s: Instance): void {
   s.live = null
 }
 
+function stopPulse(s: Instance): void {
+  s.pulse?.timer?.cancel()
+  s.pulse = null
+}
+
+function startPulse($: EngineInterface, s: Instance): void {
+  if (s.pulse || !liveOn()) return
+  const P: Pulse = { timer: null, frame: 0 }
+  s.pulse = P
+  P.timer = $.clock.after((PULSE_TICKS * TIMING.tick) / speed, () => void pulseFrame($, s, P))
+}
+
+async function pulseFrame($: EngineInterface, s: Instance, P: Pulse): Promise<void> {
+  const mine = () => s.pulse === P
+  if (!mine()) return
+  const now = await $.clock.now()
+  // A run the tool never answered: the render drops it at RUNNING_MAX_MS, the pulse with it.
+  const running = (await activities($, s)).some(a => a.state === 'running' && now - a.at < RUNNING_MAX_MS)
+  if (!mine()) return
+  if (!running) return stopPulse(s)
+  P.frame += 1
+  await patch($, s, cur => ({ tick: cur.tick + 1 }))
+  if (!mine()) return
+  P.timer = $.clock.after((PULSE_TICKS * TIMING.tick) / speed, () => void pulseFrame($, s, P))
+}
+
+// The pulse follows the activities: on while one runs, off once none does.
+async function settlePulse($: EngineInterface, s: Instance): Promise<void> {
+  const running = (await activities($, s)).some(a => a.state === 'running')
+  if (running) startPulse($, s)
+  else stopPulse(s)
+  await patch($, s, cur => ({ tick: cur.tick + 1 }))
+}
+
 // Lit as the call starts, from what the call names, before the tool has run.
 async function lightEarly($: EngineInterface, e: { tool: string }, epoch: number, cwd: string | null = null): Promise<void> {
   const command = commandOf(e)
@@ -1441,6 +1482,7 @@ async function startGit($: EngineInterface, s: Instance, actions: GitAction[]): 
       plain: a.icon.plain,
     })),
   ])
+  await settlePulse($, s)
   return ids
 }
 
@@ -1476,6 +1518,7 @@ async function finishGit($: EngineInterface, s: Instance, p: Pending, results: O
       return result ? { ...a, ...result, at: now } : a
     }),
   )
+  await settlePulse($, s)
   $.clock.after(ACTIVITY_TTL_MS + 500, () => void setActivities($, s, cur => cur.filter(a => a.state === 'running' || a.at > now)))
 }
 
@@ -1951,7 +1994,8 @@ type Before = { existed: Map<string, boolean>; removes: Set<string>; snaps: Snap
 async function afterTool($: EngineInterface, s: Instance, pending: Pending | null, command: string, cwd: string, since: Since, result: ToolResult, ps: boolean, epoch: number, before?: Before): Promise<void> {
   if (pending && result.deny) {
     const ids = pending.ids
-    void setActivities($, s, cur => cur.filter(a => !ids.includes(a.id)))
+    await setActivities($, s, cur => cur.filter(a => !ids.includes(a.id)))
+    await settlePulse($, s)
     return
   }
   if (result.deny) return
@@ -1992,6 +2036,7 @@ async function failTool($: EngineInterface, s: Instance, pending: Pending | null
 async function restart($: EngineInterface, s: Instance): Promise<void> {
   const t = await get($, s)
   stopLive(s)
+  stopPulse(s)
   forgetLit(s)
   if (t.flashOn) await patch($, s, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {} }))
   if (t.preview) await patch($, s, () => ({ preview: '', previewTop: 0 }))
@@ -2005,6 +2050,7 @@ function dispose(s: Instance): void {
   s.blink?.cancel()
   s.blink = null
   stopLive(s)
+  stopPulse(s)
   forgetLit(s)
   s.generation += 1
 }
@@ -2074,7 +2120,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   // The live light only while its frames play: idle, its bar stays parked on its row and the desktop scrolls natively.
   const parked = s.live !== null && !s.live.step && !s.live.queue.length
   if (rows.length > NATIVE_ROWS || (rp && !parked)) s.nativeScroll = false
-  const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || latest ? 1 : 0)
+  const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || runText ? 1 : 0)
   const ownRoom = Math.max(5, (props.scroll?.bodyRows ?? 40) - fixed)
   const room = s.nativeScroll ? Math.max(1, rows.length) : ownRoom
   const isLit = (x: string) => bright.has(x) || dimmed.has(x)
@@ -2284,15 +2330,19 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     // modern: the commit's step tones the branch as it does a file, and its command's chips follow the head.
     const tinted = tint(BRANCH_ROW)
     const branchChips = chipsOf(BRANCH_ROW)
+    // The pulse of the running action, under the live step's tint when the two meet.
+    const pulse = s.pulse && latest?.state === 'running' ? (RAMPS[latest.tone] ?? RAMPS.teal!)[PULSE_TONES[s.pulse.frame % 4]!] : undefined
+    const name = tinted ?? pulse
     return (
       <Box flexDirection="row" height={1} overflow="hidden">
         <Box flexDirection="row" flexShrink={0}>
-          <Text color={tinted ?? (isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent)}>{(unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd) + ' '}</Text>
-          <Text bold color={tinted ?? (isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined)}>
+          <Text color={name ?? (isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent)}>{(unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd) + ' '}</Text>
+          <Text bold color={name ?? (isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined)}>
             {b.head}
           </Text>
           {b.ahead > 0 && <Text color={TONES.teal?.solid}>{` ↑${b.ahead}`}</Text>}
           {b.behind > 0 && <Text color={TONES.blue?.solid}>{` ↓${b.behind}`}</Text>}
+          {latest && chip(latest, pulse)}
         </Box>
         {branchChips.length > 0 && (
           <Box flexDirection="row" flexShrink={1} overflow="hidden">
@@ -2323,16 +2373,17 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     )
   }
 
-  const chip = (a: Activity) => {
+  // The git activity chip on the branch row: on the pulse's tone while it runs, dark text as chipsOf from tone 3 up.
+  const chip = (a: Activity, bg?: string) => {
     const tone = a.state === 'failed' ? 'red' : a.tone
-    const color = TONES[tone]?.solid ?? theme.accent
+    const color = bg ? '#1b1b1f' : (TONES[tone]?.solid ?? theme.accent)
     const icon = unicode ? a.plain : a.nerd
     const hash = a.state === 'done' && a.kind === 'git commit' ? a.detail.split(' ')[0] ?? '' : ''
     return (
-      <Box flexDirection="row" marginLeft={2}>
-        <Text color={color}>{icon + ' '}</Text>
-        <Text bold={a.state === 'running'} color={color}>
-          {a.state === 'running' ? `${a.label}…` : a.label}
+      <Box flexDirection="row" marginLeft={1} flexShrink={0}>
+        <Text color={color} backgroundColor={bg}>{(bg ? ' ' : '') + icon + ' '}</Text>
+        <Text bold={a.state === 'running'} color={color} backgroundColor={bg}>
+          {(a.state === 'running' ? `${a.label}…` : a.label) + (bg ? ' ' : '')}
         </Text>
         {hash && <Text color={theme.muted}>{` ${hash}`}</Text>}
       </Box>
@@ -2435,7 +2486,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
         props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) } satisfies RowsProps}
       />
       <Box flexGrow={1} />
-      {(t.selected || latest || runText) && (
+      {(t.selected || runText) && (
         <Box flexDirection="row">
           {t.selected ? (
             <Box flexShrink={1}>
@@ -2450,7 +2501,6 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
               <Text color={theme.muted}>{runText}</Text>
             </Box>
           )}
-          {latest && chip(latest)}
         </Box>
       )}
     </Box>

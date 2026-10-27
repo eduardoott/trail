@@ -40,6 +40,8 @@ export function record(trail: Step[], step: Step, max = TRAIL_MAX): Step[] {
     if (trail[at]!.shut || step.shut) merged.shut = [...new Set([...(trail[at]!.shut ?? []), ...(step.shut ?? [])])]
     // The result of a command finds the labels its start recorded: union, the first step's order, no repeats.
     if (trail[at]!.names || step.names) merged.names = [...new Set([...(trail[at]!.names ?? []), ...(step.names ?? [])])]
+    // The git result comes with the scan, after the early light: a later one fills in.
+    if (step.git) merged.git = step.git
     return [...trail.slice(0, at), merged, ...trail.slice(at + 1)]
   }
   const after = trail.findIndex(one => one.epoch > step.epoch)

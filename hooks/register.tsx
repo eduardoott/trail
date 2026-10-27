@@ -3,7 +3,7 @@
 import { type BuiltinToolResults, type EngineInterface, type Register, type RenderInput, type Timer, update } from 'claude-code'
 import { LINUX_LAUNCH, openCommand, openWithCommand } from './open'
 
-import type { Activity, FileNode, FileTree, Repo, Theme } from '../types'
+import type { Activity, FileNode, FileTree, Repo, StepGit, Theme } from '../types'
 import { BRANCH_ICON, chainOf, type GitAction, gitActions, RAMPS, readOnly, readTargets, resolve, TONES } from './git'
 import type { RowSpec, RowsProps, Seg } from './rows'
 import { CHEVRON_CLOSED, CHEVRON_OPEN, fileIcon, GIT_COLOR } from './icons'
@@ -214,7 +214,8 @@ type Live = Player & {
 type Since = { ms: number; os: 'linux' | 'darwin' | 'win32' }
 type Pending = { actions: GitAction[]; ids: number[]; command: string; head: string }
 // names: the command's labels (namesOf), carried to the step its scan records.
-type Job = { actions: GitAction[]; since: Since; initRepo: boolean; readOnly: boolean; epoch: number; files?: Record<string, StepFile>; names?: string[] }
+// git: the command's git result, carried to the step its scan records.
+type Job = { actions: GitAction[]; since: Since; initRepo: boolean; readOnly: boolean; epoch: number; files?: Record<string, StepFile>; names?: string[]; git?: StepGit }
 type Background = { p: Pending | null; job: Job; reads: string[] }
 type GitOperation = NonNullable<BuiltinToolResults['Bash']['gitOperation']>
 type Outcome = { state: 'done' | 'failed'; label: string; detail: string }
@@ -305,6 +306,14 @@ function failAll(p: Pending): Outcome[] {
 
 function proven(p: Pending | null, results: Outcome[]): GitAction[] {
   return p ? p.actions.filter((_, i) => results[i]?.state !== 'failed') : []
+}
+
+// The last action of the chain, as the live chip keeps it once all are done.
+function gitOf(p: Pending | null, results: Outcome[]): StepGit | undefined {
+  const i = (p?.actions.length ?? 0) - 1
+  const a = p?.actions[i]
+  const r = results[i]
+  return a && r ? { kind: a.kind, label: r.label, running: a.running, state: r.state, detail: r.detail, tone: a.tone, nerd: a.icon.nerd, plain: a.icon.plain } : undefined
 }
 
 function taskEnds(text: string): [string, string][] {
@@ -816,7 +825,7 @@ function lightUp(cur: FileTree, tones: Record<string, string>): Partial<FileTree
 }
 
 // names: the labels of the command that lit these rows; the step keeps them (record unions the early light's and the result's).
-async function flash($: EngineInterface, s: Instance, tones: Record<string, string>, epoch = lightEpoch, files?: Record<string, StepFile>, names?: string[]): Promise<void> {
+async function flash($: EngineInterface, s: Instance, tones: Record<string, string>, epoch = lightEpoch, files?: Record<string, StepFile>, names?: string[], git?: StepGit): Promise<void> {
   const unique = Object.keys(tones)
   // Recorded even when it arrives late: a commit's green after the answer ended still belongs to its command.
   // A file born here replays green; one gone replays as a ghost.
@@ -833,7 +842,7 @@ async function flash($: EngineInterface, s: Instance, tones: Record<string, stri
   // The live light still on its way to these opens their folders: for the replay they were open, as the light of today left them.
   for (const one of s.live ? [s.live.step, ...s.live.flush, ...s.live.queue] : []) for (const id of Object.keys(one?.tones ?? {})) if (id !== BRANCH_ROW) for (const dir of ancestorsOf(id, before.root)) open.add(dir)
   const shut = [...new Set(unique.filter(id => id !== BRANCH_ROW).flatMap(id => ancestorsOf(id, before.root)).filter(dir => !open.has(dir)))]
-  s.trail = record(s.trail, { epoch, turn, tones: files ? kept : tones, ...(files ? { files } : {}), ...(shut.length ? { shut } : {}), ...(names?.length ? { names } : {}) })
+  s.trail = record(s.trail, { epoch, turn, tones: files ? kept : tones, ...(files ? { files } : {}), ...(shut.length ? { shut } : {}), ...(names?.length ? { names } : {}), ...(git ? { git } : {}) })
   void $.state.set({ ...TRAIL, id: s.id }, s.trail)
   // liveAnimation animated plays a gone file too, as the replay does: its row stays, a ghost once the tree lost it, until its
   // step played it out. The instant light has no row to light.
@@ -1153,6 +1162,19 @@ function markIcon(p: Player): void {
   if (!p.icon) return
   if (p.step) p.marks[p.icon.file] = kindOf(p.step, p.icon.file)
   p.icon = null
+}
+
+// modern's step with a git result on the branch row: its chip in the running form, on the pulse driven by the
+// replay's frames, until the branch settles (or the step's last row, the branch having no frames beside files), then final.
+function replayedGit(r: Replay | null): { a: Activity; bg?: string } | null {
+  const g = r?.modern && r.frames.length && r.step && BRANCH_ROW in r.step.tones ? r.step.git : undefined
+  if (!r || !g) return null
+  const settles = r.frames.flatMap((f, i) => (f.kind === 'settle' ? [i] : []))
+  const own = r.frames.findIndex(f => f.kind === 'settle' && f.file === BRANCH_ROW)
+  const end = own >= 0 ? own : (settles.at(-1) ?? -1)
+  const a: Activity = { id: 0, at: 0, kind: g.kind, label: g.label, state: g.state, detail: g.detail, tone: g.tone, nerd: g.nerd, plain: g.plain }
+  if (r.at > end) return { a }
+  return { a: { ...a, label: g.running, state: 'running', detail: '' }, bg: (RAMPS[g.tone] ?? RAMPS.teal!)[PULSE_TONES[r.at % PULSE_TONES.length]!] }
 }
 
 function newLive(): Live {
@@ -1532,7 +1554,8 @@ async function settleBackground($: EngineInterface, s: Instance, text: string): 
     const results = task.p ? await outcomes($, s, task.p, ok, undefined) : []
     if (task.p) await finishGit($, s, task.p, results)
     if (showReads) s.queuedReads.push(...task.reads)
-    scheduleScan($, s, { ...task.job, actions: proven(task.p, results), epoch: lightEpoch })
+    const done = gitOf(task.p, results)
+    scheduleScan($, s, { ...task.job, actions: proven(task.p, results), epoch: lightEpoch, ...(done ? { git: done } : {}) })
   }
 }
 
@@ -1592,6 +1615,7 @@ async function afterBash($: EngineInterface, s: Instance, jobs: Job[]): Promise<
   for (const j of jobs) for (const [p, f] of Object.entries(j.files ?? {})) files[p] = { ...files[p], ...f }
   // The labels of every command that came together: the first job's order, no repeats.
   const names = [...new Set(jobs.flatMap(j => j.names ?? []))]
+  const gitDone = jobs.flatMap(j => (j.git ? [j.git] : [])).at(-1)
   if (writes) {
     const found = fresh.top
       ? await changedInRepo($, s, t.root, since, before, fresh.ignored)
@@ -1660,8 +1684,10 @@ async function afterBash($: EngineInterface, s: Instance, jobs: Job[]): Promise<
     if (pushLike) tones[BRANCH_ROW] = pushLike.tone
     else if (committed) tones[BRANCH_ROW] = 'green'
   }
+  // A failed action proves nothing to light: its branch row lights red, so the replay has a step to draw the failure on.
+  if (showWrites && gitDone?.state === 'failed' && !tones[BRANCH_ROW]) tones[BRANCH_ROW] = 'red'
   try {
-    await flash($, s, tones, epoch, Object.keys(files).length ? files : undefined, names)
+    await flash($, s, tones, epoch, Object.keys(files).length ? files : undefined, names, gitDone)
   } finally {
     // Queued now, the waiting steps keep them out; one that never got a step comes in.
     if (s.live?.coming.size) {
@@ -2026,7 +2052,8 @@ async function afterTool($: EngineInterface, s: Instance, pending: Pending | nul
   const results = pending ? await outcomes($, s, pending, !result.isError, out.gitOperation) : []
   if (pending) await finishGit($, s, pending, results)
   s.queuedReads.push(...reads)
-  scheduleScan($, s, { ...job, actions: proven(pending, results), ...(Object.keys(files).length ? { files } : {}) })
+  const done = gitOf(pending, results)
+  scheduleScan($, s, { ...job, actions: proven(pending, results), ...(Object.keys(files).length ? { files } : {}), ...(done ? { git: done } : {}) })
 }
 
 async function failTool($: EngineInterface, s: Instance, pending: Pending | null): Promise<void> {
@@ -2101,6 +2128,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   const now = await $.clock.now()
   const live = (await activities($, s)).filter(a => now - a.at < (a.state === 'running' ? RUNNING_MAX_MS : ACTIVITY_TTL_MS))
   const latest = [...live].reverse().find(a => a.state === 'running') ?? live[live.length - 1]
+  const replayed = replayedGit(s.replay)
   // The live run of 2 files or more, while it plays: the one playing (or lit at once) of all queued since the queue was empty.
   const run = s.live && (s.live.step || s.live.queue.length) && s.live.run.total >= 2 ? s.live.run : null
   const runText = run ? `▸ ${Math.min(run.done, run.total)} of ${run.total}` : ''
@@ -2120,7 +2148,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   // The live light only while its frames play: idle, its bar stays parked on its row and the desktop scrolls natively.
   const parked = s.live !== null && !s.live.step && !s.live.queue.length
   if (rows.length > NATIVE_ROWS || (rp && !parked)) s.nativeScroll = false
-  const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.top && t.branch && latest ? 1 : 0) + (t.selected || runText ? 1 : 0)
+  const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.top && t.branch && (latest || replayed) ? 1 : 0) + (t.selected || runText ? 1 : 0)
   const ownRoom = Math.max(5, (props.scroll?.bodyRows ?? 40) - fixed)
   const room = s.nativeScroll ? Math.max(1, rows.length) : ownRoom
   const isLit = (x: string) => bright.has(x) || dimmed.has(x)
@@ -2370,10 +2398,10 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
             {rootCounts.length === 0 && totals[0] === 0 && totals[1] === 0 && <Text color={theme.muted}> clean</Text>}
           </Box>
         </Box>
-        {latest && (
+        {(replayed || latest) && (
           <Box flexDirection="row" height={1} overflow="hidden">
             <Text>{'  '}</Text>
-            {chip(latest, pulse)}
+            {replayed ? chip(replayed.a, replayed.bg) : chip(latest!, pulse)}
           </Box>
         )}
       </Box>

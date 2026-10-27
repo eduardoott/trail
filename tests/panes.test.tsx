@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { paneId } from '../hooks/wsl'
-import { RAMPS } from '../hooks/git'
+import { RAMPS, TONES } from '../hooks/git'
 import { BRANCH_ROW, CATCH, route, RUSH, TIMING } from '../hooks/replay'
 
 const WSL_ROOT = '//wsl.localhost/Ubuntu/home/user/my-repo'
@@ -2528,4 +2528,150 @@ test('a failing push draws push failed in red on the line under the branch row',
   expect(label?.props?.color).toBe('#f87171')
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.settle()
+})
+
+// The git result rides on its step, so the replay draws it again under the branch while that step plays.
+const SHA = { result: { text: 'ok', isError: false, gitOperation: { commit: { sha: 'abc1234def' } } } }
+const chipLabel = (row: any, label: string): any => nodesOf(row).find(n => n.type === 'Text' && typeof n.children?.[0] === 'string' && n.children[0].startsWith(label))
+
+test('a git add and commit record the commit result on the branch step', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const saved = trailSaved(on)
+  const { clock, gate } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.result = SHA
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo add -A && git -C /home/user/my-repo commit -m x' } as any))
+  await clock.settle()
+  const step = saved.trail.find((one: any) => BRANCH_ROW in one.tones)
+  // The last action of the chain, as the live chip keeps it.
+  expect(step?.git).toEqual({ kind: 'git commit', label: 'committed', running: 'committing', state: 'done', detail: 'abc1234', tone: 'green', nerd: expect.any(String), plain: '●' })
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.settle()
+})
+
+// Plays the last interaction once the live chip is gone: each tick's drawing until the replay is over.
+async function replayDrawn($: any, clock: any, ui: any): Promise<any[]> {
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(50_000)
+  expect(textOf(await ui.drawn())).not.toContain('committ')
+  await ui.press({ key: 'replay-last' })
+  await clock.advance(10)
+  const out: any[] = []
+  for (let i = 0; i < 80; i++) {
+    const drawn = await ui.drawn()
+    out.push(drawn)
+    if (!JSON.stringify(drawn).includes('replay-stop')) break
+    await clock.advance(TICK)
+  }
+  return out
+}
+
+test('▷ of a git commit draws committing… on the pulse under the branch while it lights, committed and its hash once it settles, and nothing after', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  const green = RAMPS.green!
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.result = SHA
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: COMMIT } as any))
+  const frames = await replayDrawn($, clock, ui)
+  const running = frames.filter(d => chipRowOf(d, 'committing…'))
+  const done = frames.filter(d => chipRowOf(d, 'committed'))
+  // Ramp up, hold and ramp down: the running form for every tick the branch is lighting, then the final one.
+  expect(running.length).toBeGreaterThanOrEqual(TIMING.rampUp + TIMING.rampDown)
+  expect(done.length).toBeGreaterThan(0)
+  expect(frames.indexOf(done[0])).toBe(running.length)
+  const bgs = running.map(d => chipLabel(chipRowOf(d, 'committing…'), 'committing…')?.props?.backgroundColor)
+  expect(bgs.every(bg => [green[2], green[3], green[4]].includes(bg))).toBe(true)
+  expect(new Set(bgs).size).toBeGreaterThan(1)
+  expect(running.some(d => green.includes(branchColor(d)!))).toBe(true)
+  for (const d of running) expect(JSON.stringify(branchRowOf(d))).not.toContain('committing…')
+  const row = chipRowOf(done[0], 'committed')
+  expect(textOf(row).startsWith('  ')).toBe(true)
+  expect(textOf(row)).toContain('abc1234')
+  expect(textOf(done[0])).not.toContain('committing…')
+  const label = chipLabel(row, 'committed')
+  expect(label?.props?.color).toBe(TONES.green!.solid)
+  expect(label?.props?.backgroundColor).toBe(undefined)
+  const last = frames[frames.length - 1]
+  expect(JSON.stringify(last)).not.toContain('replay-stop')
+  expect(textOf(last)).not.toContain('committ')
+})
+
+test('the tree window gives the replayed chip line one row while it shows, and ■ takes it away', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const root = DIRS[WSL_ROOT]!
+  DIRS[WSL_ROOT] = [...root, ...Array.from({ length: 160 }, (_, i): [string, 'file'] => [`n${String(i).padStart(3, '0')}.md`, 'file'])]
+  try {
+    const { clock, gate, ui } = await litWorld($, on, { ...props, scroll: { offset: 0, bodyRows: 20 } })
+    await $.prompt.submit({ text: 'x' } as any)
+    gate.result = SHA
+    await command(clock, gate, $.tool.call({ tool: 'Bash', command: COMMIT } as any))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(50_000)
+    const before = (await specs(ui)).length
+    await ui.press({ key: 'replay-last' })
+    await clock.advance(10)
+    expect(chipRowOf(await ui.drawn(), 'committing…')).not.toBe(undefined)
+    expect((await specs(ui)).length).toBe(before - 1)
+    await ui.press({ key: 'replay-stop' })
+    await clock.advance(10)
+    expect(textOf(await ui.drawn())).not.toContain('committ')
+  } finally {
+    DIRS[WSL_ROOT] = root
+  }
+})
+
+test('▷ of a failed push draws pushing… and then push failed in red under the branch', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.fail = true
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo push' } as any))
+  gate.fail = false
+  const frames = await replayDrawn($, clock, ui)
+  expect(frames.some(d => chipRowOf(d, 'pushing…'))).toBe(true)
+  const failed = frames.find(d => chipRowOf(d, 'push failed'))
+  expect(failed).not.toBe(undefined)
+  expect(chipLabel(chipRowOf(failed, 'push failed'), 'push failed')?.props?.color).toBe('#f87171')
+  expect(textOf(frames[frames.length - 1])).not.toContain('push failed')
+})
+
+test('a branch step from an older trail, with no git result, replays lit with no chip line', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  // A reload: the tab's registry and its trail come back from $.state. The trail is stored as 0.3 saved it, with no
+  // git result, and the registry keeps the tab its close took out.
+  const id = paneId('wsl:/home/user/my-repo')
+  const kept = { trail: [] as any[], registry: null as any }
+  on('state.set', (_$: any, e: any, next: any) => {
+    if (e.plugin === 'trail' && e.key === 'trail') {
+      kept.trail = e.value.map(({ git: _, ...rest }: any) => rest)
+      return next({ ...e, value: kept.trail })
+    }
+    if (e.plugin === 'trail' && e.key === 'repos') {
+      if (e.value?.[id]) kept.registry = e.value
+      else if (kept.registry) return next({ ...e, value: { ...e.value, [id]: kept.registry[id] } })
+    }
+    return next(e)
+  })
+  const { clock, gate, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.result = SHA
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: COMMIT } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.settle()
+  expect(kept.trail.some((one: any) => BRANCH_ROW in one.tones)).toBe(true)
+  await ui.unmount()
+  await $.command.run({ ...openCmd(''), args: `close ${WSL_ROOT}` })
+  await clock.settle()
+  const back = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: id, props })
+  await clock.settle()
+  const frames = await replayDrawn($, clock, back)
+  expect(frames.length).toBeGreaterThan(TIMING.rampUp)
+  expect(frames.some(d => RAMPS.green!.includes(branchColor(d)!))).toBe(true)
+  for (const d of frames) expect(textOf(d)).not.toContain('committ')
+})
+
+test('classic replays the branch step with no chip line', { options: { sessionTab: 'off', replayAnimation: 'classic' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.result = SHA
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: COMMIT } as any))
+  const frames = await replayDrawn($, clock, ui)
+  expect(JSON.stringify(frames[0])).toContain('■ 1/1')
+  for (const d of frames) expect(textOf(d)).not.toContain('committ')
 })

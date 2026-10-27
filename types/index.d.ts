@@ -75,7 +75,9 @@ export type Theme = {
 export type StepFile = { added?: number; removed?: number; born?: boolean; gone?: boolean; edit?: boolean }
 // shut: folders still closed when the command lit; the live light opens them, the replay shuts them again.
 // names: the command's labels in order (`Read`, `sed`, `git commit`), see namesOf in hooks/replay.ts.
-export type Step = { epoch: number; turn: number; tones: Record<string, string>; files?: Record<string, StepFile>; shut?: string[]; names?: string[] }
+// git: the final result of the command's last git action (the live chip, with its running label); the replay draws it under the branch.
+export type StepGit = { kind: string; label: string; running: string; state: 'done' | 'failed'; detail: string; tone: string; nerd: string; plain: string }
+export type Step = { epoch: number; turn: number; tones: Record<string, string>; files?: Record<string, StepFile>; shut?: string[]; names?: string[]; git?: StepGit }
 
 export type Repo = {
   key: string

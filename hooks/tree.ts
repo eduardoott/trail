@@ -3,7 +3,11 @@ import type { Branch, FileNode, FileTree, Theme } from '../types'
 import { stronger } from './icons'
 
 export type Entry = { name: string; kind: 'file' | 'dir' | 'other'; mtimeMs: number; size: number; isLink: boolean }
-export type Row = { node: FileNode; depth: number; open: boolean }
+// count: the files a fold row stands for.
+export type Row = { node: FileNode; depth: number; open: boolean; count?: number }
+// Fase 9: a folder with more direct children than limit opens folded around the files that matter.
+export type FoldCtx = { touched: Set<string>; limit: number }
+export const FOLD_CONTEXT = 3
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
@@ -44,6 +48,8 @@ export function emptyTree(root: string): FileTree {
     preview: '',
     previewTop: 0,
     tick: 0,
+    unfold: [],
+    flat: [],
   }
 }
 
@@ -287,7 +293,59 @@ export function relative(root: string, path: string): string {
   return path === root ? '' : path.slice(root.endsWith('/') ? root.length : root.length + 1)
 }
 
-export function visibleRows(t: FileTree): Row[] {
+export function isBig(kids: { length: number }, limit: number): boolean {
+  return limit > 0 && kids.length > limit
+}
+
+type Kid = { node: FileNode; count?: number }
+
+// A folded folder's children: subfolders, the files that matter (touched, in git, cursor, selected) with FOLD_CONTEXT
+// siblings each side, and one fold entry per hidden stretch of 2 or more. A stretch of 1 shows.
+function folded(t: FileTree, dir: string, list: FileNode[], ctx: FoldCtx): Kid[] {
+  const n = list.length
+  const kept = new Array<boolean>(n).fill(false)
+  const mark = (i: number) => {
+    for (let j = Math.max(0, i - FOLD_CONTEXT); j <= Math.min(n - 1, i + FOLD_CONTEXT); j++) kept[j] = true
+  }
+  list.forEach((k, i) => {
+    if (k.kind === 'dir') kept[i] = true
+    else if (ctx.touched.has(k.id) || t.git[k.id]) mark(i)
+  })
+  // A key unfolds the whole stretch as it was before the cursor cut it: walking the cursor into an unfolded
+  // stretch never folds the rest of it back.
+  const index = new Map(list.map((k, i) => [k.id, i]))
+  const prefix = `${dir}\u0000`
+  for (const key of t.unfold) {
+    if (!key.startsWith(prefix)) continue
+    const at = index.get(key.slice(prefix.length))
+    if (at === undefined || kept[at]) continue
+    let lo = at
+    let hi = at
+    while (lo > 0 && !kept[lo - 1]) lo--
+    while (hi < n - 1 && !kept[hi + 1]) hi++
+    for (let i = lo; i <= hi; i++) kept[i] = true
+  }
+  for (const id of [t.cursor, t.selected]) {
+    const at = index.get(id)
+    if (at !== undefined && list[at]!.kind !== 'dir') mark(at)
+  }
+  const out: Kid[] = []
+  for (let i = 0; i < n; ) {
+    let j = i
+    while (j < n && !kept[j]) j++
+    if (j === i || j - i === 1) {
+      out.push({ node: list[i]! })
+      i++
+      continue
+    }
+    const first = list[i]!
+    out.push({ node: { id: prefix + first.id, parent: dir, name: '', kind: 'fold', hidden: false, mtime: 0, size: 0, loaded: false }, count: j - i })
+    i = j
+  }
+  return out
+}
+
+export function visibleRows(t: FileTree, ctx?: FoldCtx): Row[] {
   const kids = new Map<string, FileNode[]>()
   for (const n of t.nodes) {
     if (!t.showHidden && n.hidden) continue
@@ -311,8 +369,16 @@ export function visibleRows(t: FileTree): Row[] {
   const filtered = Boolean(keep) || t.onlyChanged
   const open = new Set(t.expanded)
   const rows: Row[] = []
+  // With a query or the ± filter the fold does not apply: the filter already picks the rows. The root never folds:
+  // it has no header row to carry its count or to shut and reopen.
   const walk = (dir: string, depth: number) => {
-    for (const n of kids.get(dir) ?? []) {
+    const list = kids.get(dir) ?? []
+    const items: Kid[] = !filtered && ctx && dir !== t.root && isBig(list, ctx.limit) && !t.flat.includes(dir) ? folded(t, dir, list, ctx) : list.map(node => ({ node }))
+    for (const { node: n, count } of items) {
+      if (n.kind === 'fold') {
+        rows.push({ node: n, depth, open: false, count })
+        continue
+      }
       if (keep && !keep.has(n.id)) continue
       if (t.onlyChanged && !changed(n)) continue
       const isOpen = n.kind === 'dir' && (filtered ? kids.has(n.id) : open.has(n.id))

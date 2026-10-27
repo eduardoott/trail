@@ -222,3 +222,21 @@ test('namesOf skips a here-document body and words that are no program name', ()
   // `<<<` is a here-string, not a here-document: nothing is skipped.
   expect(namesOf('Bash', 'tr a b <<< abc; ls')).toEqual(['tr', 'ls'])
 })
+
+// Fase 9: reveals count against the cap like the bar's moves do, so a huge folder opens within it.
+test('opening a folder of 1533 children stays within the cap, in the replay and live', () => {
+  const dir = '/r/db'
+  const kids = Array.from({ length: 1533 }, (_, i) => `${dir}/p${i}`)
+  const step: Step = { epoch: 1, turn: 1, tones: { [kids[766]!]: 'purple' } }
+  for (const timing of [TIMING, LIVE]) {
+    const f = plan(step, ['/r', dir], null, { [dir]: kids }, timing)
+    expect(ticksOf(f)).toBeLessThanOrEqual(timing.cap / TIMING.tick)
+    expect(f.filter(x => x.kind === 'reveal').flatMap(x => ('ids' in x ? x.ids : [x.id])).length).toBe(1533)
+  }
+})
+test('a folder of 20 children still reveals one child per tick', () => {
+  const dir = '/r/db'
+  const kids = Array.from({ length: 20 }, (_, i) => `${dir}/p${i}`)
+  const f = plan({ epoch: 1, turn: 1, tones: { [kids[10]!]: 'purple' } }, ['/r', dir], null, { [dir]: kids })
+  expect(f.filter(x => x.kind === 'reveal').length).toBe(20)
+})

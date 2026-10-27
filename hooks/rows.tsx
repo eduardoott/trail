@@ -1,7 +1,8 @@
 // Copied from filetree 0.2.24 (Kurt Buhler), MIT License: see ../LICENSE.
 import type { ClientModule } from 'claude-code'
 
-export type Seg = { t: string; c?: string; b?: boolean; s?: boolean; i?: boolean; sh?: string; dim?: boolean; one?: boolean; spin?: boolean; bg?: string; tab?: string }
+// flat: the folder a click on this segment shows whole (the big folder's count in its header).
+export type Seg = { t: string; c?: string; b?: boolean; s?: boolean; i?: boolean; sh?: string; dim?: boolean; one?: boolean; spin?: boolean; bg?: string; tab?: string; flat?: string }
 // bg: the row's own background (the replay's bar), under the active and hover ones.
 export type RowSpec = { id: string; left: Seg[]; right: Seg[]; bg?: string }
 export type RowsProps = {
@@ -78,6 +79,10 @@ const Rows: ClientModule<RowsProps, Local> = (props, surface) => {
       const w = [...seg.t].length
       if (seg.tab && e.x >= x && e.x < x + w) {
         surface.post({ tab: seg.tab })
+        return
+      }
+      if (seg.flat && e.x >= x && e.x < x + w) {
+        surface.post({ flat: seg.flat })
         return
       }
       x += w

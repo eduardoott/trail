@@ -23,7 +23,7 @@ export const LIVE_QUEUE = { catch: 2, rush: 8, overflow: 30 } as const
 export type Frame =
   | { kind: 'bar'; row: string; ticks: number }
   | { kind: 'open'; dir: string }
-  | { kind: 'reveal'; id: string }
+  | { kind: 'reveal'; ids: string[] }
   | { kind: 'shade'; file: string; shade: 1 | 2 | 3 | 4 | 5 }
   | { kind: 'icon'; file: string; frame: number; count: number }
   | { kind: 'wait'; ticks: number }
@@ -260,7 +260,9 @@ function walk(rows: string[], from: string | null, target: string, closed: strin
     } else if (!go(dir)) return null
     frames.push({ kind: 'open', dir })
     const kids = (children[dir] ?? []).filter(id => !work.includes(id))
-    if (!jump) for (const id of kids) frames.push({ kind: 'reveal', id })
+    // boost 0 or 1 keeps one child a tick; over the cap, plan's boost packs more children in each tick.
+    const per = Math.max(1, boost)
+    if (!jump) for (let i = 0; i < kids.length; i += per) frames.push({ kind: 'reveal', ids: kids.slice(i, i + per) })
     work.splice(work.indexOf(dir) + 1, 0, ...kids)
     opened.push(dir)
   }
@@ -271,7 +273,7 @@ function walk(rows: string[], from: string | null, target: string, closed: strin
     while (i >= 0 && !work.includes(unborn.order[i]!)) i--
     if (at < 0 || i < 0) return null
     work.splice(work.indexOf(unborn.order[i]!) + 1, 0, target)
-    frames.push({ kind: 'reveal', id: target })
+    frames.push({ kind: 'reveal', ids: [target] })
   }
   if (jump) {
     at = work.indexOf(target)
@@ -320,7 +322,8 @@ function build(step: Step, rows: string[], from: string | null, closed: Record<s
   return out
 }
 
-// The whole step. Over the cap, the routes walk more rows per frame; brakes, reveals, ramps, icon and hold stay.
+// The whole step. Over the cap, the routes walk more rows and reveal more children per frame; brakes, ramps, icon
+// and hold stay.
 // timing: TIMING (the replay), LIVE, CATCH or RUSH; jump moves the bar straight to each file (see route).
 // unborn: the step's own new files, each comes in as the bar reaches it (see Unborn).
 export function plan(step: Step, rows: string[], from: string | null, closed: Record<string, string[]>, timing: Timing = TIMING, jump = false, unborn?: Unborn): Frame[] {

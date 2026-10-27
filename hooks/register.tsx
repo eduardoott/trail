@@ -13,9 +13,11 @@ import {
   DEFAULT_THEME,
   dirname,
   emptyTree,
+  type FoldCtx,
   formatSize,
   inside,
   isAbsolute,
+  isBig,
   join,
   mapper,
   parseGit,
@@ -98,6 +100,8 @@ let sessionTab = true
 // leitura (default sim): a Read, Grep or shell reader opens the tab and counts for the card, like a write.
 let readsToo = true
 let diagnose = false
+// Fase 9: a folder with more direct children than this opens folded (0 turns the fold off).
+let pastaGrande = 200
 // Replay skin: clássico is the one-light-per-command player kept as it was; moderno plays each step as frames.
 let animacao: 'clássico' | 'moderno' = 'moderno'
 // aoVivo (moderno only): animado plays each live light as the short replay of its step; instantâneo lights at once, as before.
@@ -746,10 +750,34 @@ function openDirs(t: FileTree): string[] {
 
 function keepTop(s: Instance, cur: FileTree, expanded: string[]): Partial<FileTree> {
   if (followClaude) return { scroll: null }
-  const top = visibleRows(cur)[cur.scroll ?? s.view.from]?.node.id
-  const at = top ? visibleRows({ ...cur, expanded }).findIndex(r => r.node.id === top) : -1
+  const ctx = foldCtx(s, cur)
+  const top = visibleRows(cur, ctx)[cur.scroll ?? s.view.from]?.node.id
+  const at = top ? visibleRows({ ...cur, expanded }, ctx).findIndex(r => r.node.id === top) : -1
   return at < 0 ? {} : { scroll: at }
 }
+
+// What a folded folder keeps: every file the session's steps lit, the ones lit now, and the live light's rows.
+function touchedOf(s: Instance, t: FileTree): Set<string> {
+  const out = new Set<string>()
+  for (const step of s.trail) for (const id of Object.keys(step.tones)) if (id !== BRANCH_ROW) out.add(id)
+  for (const id of t.flash) if (id !== BRANCH_ROW) out.add(id)
+  for (const id of Object.keys(s.lit)) if (id !== BRANCH_ROW) out.add(id)
+  return out
+}
+
+function foldCtx(s: Instance, t: FileTree): FoldCtx {
+  return { touched: touchedOf(s, t), limit: pastaGrande }
+}
+
+// The folder's direct children the pane can show, as visibleRows counts them for the fold.
+function kidCounts(t: FileTree): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const n of t.nodes) if (t.showHidden || !n.hidden) out.set(n.parent, (out.get(n.parent) ?? 0) + 1)
+  return out
+}
+
+const FOLD_KEY = '\u0000'
+const ptBR = new Intl.NumberFormat('pt-BR')
 
 const DARK = { flash: [], flashDim: [], flashOn: false, flashTones: {} } satisfies Partial<FileTree>
 
@@ -901,10 +929,10 @@ async function play($: EngineInterface, s: Instance, scope: 'last' | 'all'): Pro
 
 // The rows the pane draws: the replay's hidden rows out, its ghosts in among their old siblings. A ghost whose row
 // the tree still has (the live light plays a removal before the reload takes the row out) draws as that row.
-function paneRows(t: FileTree, r: Player | null): { rows: Row[]; ghosts: Set<string>; phantoms: Set<string> } {
+function paneRows(s: Instance, t: FileTree, r: Player | null): { rows: Row[]; ghosts: Set<string>; phantoms: Set<string> } {
   const unborn = r && 'queue' in r ? unbornOf(r as Live) : null
   const hidden = unborn?.size ? new Set([...(r?.hidden ?? []), ...unborn]) : r?.hidden
-  const all = visibleRows(t)
+  const all = visibleRows(t, foldCtx(s, t))
   const rows = hidden?.size ? all.filter(x => !hidden.has(x.node.id)) : all
   const ghosts = new Set<string>()
   const phantoms = new Set<string>()
@@ -989,15 +1017,15 @@ async function playModern($: EngineInterface, s: Instance, steps: Step[], token:
   for (const p of [...ghosts, ...phantoms]) r.hidden.delete(p)
   // This step's own new files come in one by one, each as the bar reaches it, as the live light does.
   const own = Object.keys(tones).filter(p => step.files?.[p]?.born && shown.has(p) && !phantoms.includes(p))
-  const order = paneRows({ ...cur, expanded: [...new Set([...cur.expanded, ...own.flatMap(p => ancestorsOf(p, root))])] }, r).rows.map(x => x.node.id)
+  const order = paneRows(s, { ...cur, expanded: [...new Set([...cur.expanded, ...own.flatMap(p => ancestorsOf(p, root))])] }, r).rows.map(x => x.node.id)
   for (const p of own) r.hidden.add(p)
   r.step = { ...step, tones }
   r.ramps = Object.fromEntries(Object.keys(tones).map(p => [p, p === BRANCH_ROW ? (RAMPS[tones[p]!] ? tones[p]! : 'teal') : rampOf(step, p)]))
   r.names = Object.fromEntries(Object.keys(tones).map(p => [p, step.names ?? []]))
-  const ids = paneRows(cur, r).rows.map(x => x.node.id)
+  const ids = paneRows(s, cur, r).rows.map(x => x.node.id)
   // The bar sets out from the person's cursor when it shows, else it lands on the first row it visits.
   if (r.bar === null && ids.includes(cur.cursor)) r.bar = cur.cursor
-  r.kids = kidsOf(cur, root, tones, r)
+  r.kids = kidsOf(s, cur, root, tones, r)
   r.frames = plan(r.step, ids, r.bar, r.kids, TIMING, false, own.length ? { order, ids: new Set(own) } : undefined)
   await patch($, s, t => ({ tick: t.tick + 1 }))
   if (s.replay !== r) return
@@ -1053,14 +1081,14 @@ async function stopReplay($: EngineInterface, s: Instance): Promise<void> {
 }
 
 // Each folder still shut on the way to the step's rows, outermost first: the rows that come in under it once it opens.
-function kidsOf(cur: FileTree, root: string, tones: Record<string, string>, p: Player): Record<string, string[]> {
+function kidsOf(s: Instance, cur: FileTree, root: string, tones: Record<string, string>, p: Player): Record<string, string[]> {
   const open = new Set(cur.expanded)
   const kids: Record<string, string[]> = {}
   for (const f of Object.keys(tones)) {
     if (f === BRANCH_ROW) continue
     for (const dir of ancestorsOf(f, root).reverse()) {
       if (open.has(dir) || dir in kids) continue
-      const all = paneRows({ ...cur, expanded: [...cur.expanded, ...ancestorsOf(dir, root), dir] }, p).rows
+      const all = paneRows(s, { ...cur, expanded: [...cur.expanded, ...ancestorsOf(dir, root), dir] }, p).rows
       const at = all.findIndex(x => x.node.id === dir)
       if (at < 0) continue
       const list: string[] = []
@@ -1075,7 +1103,7 @@ function kidsOf(cur: FileTree, root: string, tones: Record<string, string>, p: P
 // the ticks until the next. A jump plan opens its folders with every row in at once.
 function applyFrames(s: Instance, t: FileTree, p: Player): { opened: string[]; scroll: number | undefined; ticks: number } {
   const opened: string[] = []
-  const ids = () => paneRows({ ...t, expanded: [...t.expanded, ...opened] }, p).rows.map(x => x.node.id)
+  const ids = () => paneRows(s, { ...t, expanded: [...t.expanded, ...opened] }, p).rows.map(x => x.node.id)
   let scroll: number | undefined
   let ticks = 0
   while (!ticks && p.at < p.frames.length) {
@@ -1088,7 +1116,7 @@ function applyFrames(s: Instance, t: FileTree, p: Player): { opened: string[]; s
     } else if (f.kind === 'open') {
       opened.push(f.dir)
       if (!p.jump) for (const id of p.kids[f.dir] ?? []) p.hidden.add(id)
-    } else if (f.kind === 'reveal') p.hidden.delete(f.id)
+    } else if (f.kind === 'reveal') for (const id of f.ids) p.hidden.delete(id)
     else if (f.kind === 'shade') p.shade[f.file] = f.shade
     else if (f.kind === 'icon') {
       p.icon = { file: f.file, kind: kindOf(p.step!, f.file), frame: f.frame }
@@ -1219,10 +1247,10 @@ async function playLive($: EngineInterface, s: Instance, chained = false): Promi
   // The ramps of the rows still marked stay, so their marks keep their tone.
   L.ramps = { ...Object.fromEntries(Object.entries(L.ramps).filter(([p]) => p in L.marks)), ...Object.fromEntries(Object.keys(tones).map(p => [p, p === BRANCH_ROW ? (RAMPS[tones[p]!] ? tones[p]! : 'teal') : rampOf(step, p)])) }
   L.names = { ...Object.fromEntries(Object.entries(L.names).filter(([p]) => p in L.marks)), ...Object.fromEntries(Object.keys(tones).map(p => [p, step.names ?? []])) }
-  const ids = paneRows(cur, L).rows.map(x => x.node.id)
+  const ids = paneRows(s, cur, L).rows.map(x => x.node.id)
   // The bar sets out from where the last step left it, else from the person's cursor when it shows.
   if (L.bar === null && ids.includes(cur.cursor)) L.bar = cur.cursor
-  L.kids = kidsOf(cur, root, tones, L)
+  L.kids = kidsOf(s, cur, root, tones, L)
   L.frames = plan({ ...step, tones }, ids, L.bar, L.kids, timing, L.jump)
   L.at = 0
   await liveFrames($, s, L, token)
@@ -1335,8 +1363,8 @@ async function finishLive($: EngineInterface, s: Instance): Promise<void> {
   L.shade = {}
   markIcon(L)
   const tones = Object.fromEntries(Object.entries(L.planned).filter(([p]) => !(p in L.settled)))
-  L.kids = kidsOf(cur, cur.root, tones, L)
-  L.frames = plan({ ...L.step, tones }, paneRows(cur, L).rows.map(x => x.node.id), L.bar, L.kids, CATCH, true)
+  L.kids = kidsOf(s, cur, cur.root, tones, L)
+  L.frames = plan({ ...L.step, tones }, paneRows(s, cur, L).rows.map(x => x.node.id), L.bar, L.kids, CATCH, true)
   L.at = 0
   void liveFrames($, s, L, token)
 }
@@ -1746,8 +1774,27 @@ async function toggle($: EngineInterface, s: Instance, n: FileNode): Promise<voi
   await patch($, s, t => {
     const open = new Set(t.expanded)
     if (n.kind === 'dir') open.has(n.id) ? open.delete(n.id) : open.add(n.id)
-    return { expanded: [...open], cursor: n.id, selected: n.kind === 'dir' ? t.selected : n.id }
+    // A folder shut forgets its unfolded stretches and its flat: it reopens folded.
+    const shut = n.kind === 'dir' && !open.has(n.id)
+    const fold = shut ? { unfold: t.unfold.filter(k => !k.startsWith(n.id + FOLD_KEY)), flat: t.flat.filter(d => d !== n.id) } : {}
+    return { expanded: [...open], cursor: n.id, selected: n.kind === 'dir' ? t.selected : n.id, ...fold }
   })
+}
+
+// A click or enter on a fold row: its stretch shows, and the cursor lands on the stretch's first file.
+async function unfold($: EngineInterface, s: Instance, key: string): Promise<void> {
+  const first = key.slice(key.indexOf(FOLD_KEY) + 1)
+  await patch($, s, t => ({ unfold: t.unfold.includes(key) ? t.unfold : [...t.unfold, key], cursor: first }))
+}
+
+async function toggleFlat($: EngineInterface, s: Instance, dir: string): Promise<void> {
+  await patch($, s, t => ({ flat: t.flat.includes(dir) ? t.flat.filter(d => d !== dir) : [...t.flat, dir] }))
+}
+
+// A big folder open and not flat, with no filter choosing its rows: the one `right` shows whole.
+function foldedDir(t: FileTree, n: FileNode): boolean {
+  if (n.kind !== 'dir' || !t.expanded.includes(n.id) || t.flat.includes(n.id) || t.query.trim() || t.onlyChanged) return false
+  return isBig(t.nodes.filter(k => k.parent === n.id && (t.showHidden || !k.hidden)), pastaGrande)
 }
 
 // The tab never changes root, so opening a folder only expands it.
@@ -1768,7 +1815,7 @@ async function press($: EngineInterface, s: Instance, n: FileNode): Promise<void
 }
 
 async function onMessage($: EngineInterface, s: Instance, e: { element?: string; data?: unknown; surface?: string }) {
-  const data = e.data as { press?: unknown; key?: unknown; ctrl?: unknown; shift?: unknown; scrollTo?: unknown; copy?: unknown }
+  const data = e.data as { press?: unknown; key?: unknown; ctrl?: unknown; shift?: unknown; scrollTo?: unknown; copy?: unknown; flat?: unknown }
   void sync($, s)
   const t = await get($, s)
   if (typeof data.copy === 'string') {
@@ -1780,7 +1827,16 @@ async function onMessage($: EngineInterface, s: Instance, e: { element?: string;
     if (to !== t.scroll) await patch($, s, () => ({ scroll: to }))
     return
   }
+  if (typeof data.flat === 'string') {
+    await toggleFlat($, s, data.flat)
+    return
+  }
   if (typeof data.press === 'string') {
+    if (data.press.includes(FOLD_KEY)) {
+      if (t.scroll === null) await patch($, s, () => ({ scroll: s.view.from }))
+      await unfold($, s, data.press)
+      return
+    }
     const n = t.nodes.find(x => x.id === data.press)
     if (!n) return
     if (t.scroll === null) await patch($, s, () => ({ scroll: s.view.from }))
@@ -1796,7 +1852,7 @@ async function onMessage($: EngineInterface, s: Instance, e: { element?: string;
     else if (data.key in by) await scrollPreview($, s, by[data.key] ?? 0)
     return
   }
-  const rows = visibleRows(t)
+  const rows = visibleRows(t, foldCtx(s, t))
   const at = rows.findIndex(r => r.node.id === t.cursor)
   const cur = rows[at]?.node
   const move = (d: number) => {
@@ -1809,8 +1865,12 @@ async function onMessage($: EngineInterface, s: Instance, e: { element?: string;
   else if (data.key === 'pagedown') await move(10)
   else if (data.key === 'home') await move(-rows.length)
   else if (data.key === 'end') await move(rows.length)
-  else if (cur && (data.key === 'y' || data.key === 'Y')) await copyPath($, s, cur.id, data.key === 'Y' || Boolean(data.shift), e.surface)
+  else if (cur?.kind === 'fold') {
+    if (data.key === 'return') await unfold($, s, cur.id)
+    else if ((data.key === 'left' || data.key === 'h') && cur.parent !== t.root) await patch($, s, () => ({ cursor: cur.parent }))
+  } else if (cur && (data.key === 'y' || data.key === 'Y')) await copyPath($, s, cur.id, data.key === 'Y' || Boolean(data.shift), e.surface)
   else if (cur && (data.key === 'right' || data.key === 'l') && cur.kind === 'dir' && !t.expanded.includes(cur.id)) await toggle($, s, cur)
+  else if (cur && (data.key === 'right' || data.key === 'l') && foldedDir(t, cur)) await toggleFlat($, s, cur.id)
   else if (cur && (data.key === 'left' || data.key === 'h')) {
     if (cur.kind === 'dir' && t.expanded.includes(cur.id)) await toggle($, s, cur)
     else if (cur.parent !== t.root) await patch($, s, () => ({ cursor: cur.parent }))
@@ -2007,7 +2067,8 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   // The live light draws from its own the same way, one player at a time: each one stops the other.
   const rp: Player | null = s.live ?? (s.replay?.modern ? s.replay : null)
   // A file the replayed step removed: a struck row among its old siblings while the step plays.
-  const { rows, ghosts, phantoms } = paneRows(t, s.live ?? s.replay)
+  const { rows, ghosts, phantoms } = paneRows(s, t, s.live ?? s.replay)
+  const counts = kidCounts(t)
   // Every row rides in the Client's props, bounded at 100,000 characters: past a few hundred the pane draws nothing, so a long list scrolls in a window like the terminal's.
   // A moderno replay moves the window with its bar, so on the desktop it draws in its own window until it stops.
   // The live light only while its frames play: idle, its bar stays parked on its row and the desktop scrolls natively.
@@ -2130,6 +2191,8 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
       const c = tint(n.id) ?? theme.urgent
       return barred({ id: '', left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, iconOf(n.id) ?? { t: '· ', c }, { t: n.name, c, s: true }, ...chipsOf(n.id)], right: [] }, n.id)
     }
+    // A hidden stretch of a folded folder: its count at the children's glyph column, nothing else.
+    if (n.kind === 'fold') return barred({ id: n.id, left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, { t: `… ${ptBR.format(r.count ?? 0)} arquivos`, c: theme.muted }], right: [] }, n.id)
     // A file the replay made that the tree lost since: a plain row, out of clicks as a ghost.
     if (phantoms.has(n.id)) {
       const c = tint(n.id) ?? theme.fg
@@ -2170,7 +2233,10 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
     const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
     const countsText = dirCounts.map(c => c.t).join('')
-    const cols = Math.max(4, width - r.depth * 2 - 6 - (rp ? 1 : 0) - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length)
+    // A big folder's header carries its count after the name: the click target of flat, accent while it is flat.
+    const total = n.kind === 'dir' && isBig({ length: counts.get(n.id) ?? 0 }, pastaGrande) ? `·${ptBR.format(counts.get(n.id) ?? 0)}` : ''
+    const totalSeg: Seg[] = total ? [{ t: total, c: t.flat.includes(n.id) ? theme.accent : theme.muted, flat: n.id }] : []
+    const cols = Math.max(4, width - r.depth * 2 - 6 - (rp ? 1 : 0) - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length - total.length)
     const name = n.name.length > cols ? n.name.slice(0, cols - 1) + '…' : n.name
     const caret = n.kind === 'dir' ? (unicode ? (r.open ? '▾' : '▸') : r.open ? CHEVRON_OPEN : CHEVRON_CLOSED) + ' ' : '  '
     const isRepo = n.kind === 'dir' && n.id === t.top
@@ -2183,6 +2249,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
       // A lit row keeps its live mark while it is bright; dimmed, it shows none.
       isLitRow ? ((isBright ? markOf(n.id) : null) ?? { t: glyph + ' ', sh: tone, dim: isDim, one: true }) : (iconOf(n.id) ?? { t: glyph + ' ', c: tinted ?? iconColor }),
       isLitRow ? { t: name, sh: tone, dim: isDim, b: isBright } : { t: name + dotsOf(n.id), c: tinted ?? nameColor, b: n.id === t.selected || liveLit || liveDim, s: status === 'D' && n.kind !== 'dir' },
+      ...totalSeg,
       // The chips come after the name, in the box the right side cuts: the name never shortens for them (cols stays).
       ...(n.kind === 'dir' ? [] : chipsOf(n.id)),
     ]
@@ -2682,6 +2749,8 @@ export const register: Register = (on, options) => {
   animacao = options?.animacao === 'clássico' ? 'clássico' : 'moderno'
   aoVivo = options?.aoVivo === 'instantâneo' ? 'instantâneo' : 'animado'
   abertura = options?.abertura === 'cartão' ? 'cartão' : 'sozinha'
+  const big = parseInt(String(options?.pastaGrande ?? ''), 10)
+  pastaGrande = Number.isInteger(big) && big >= 0 ? big : 200
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
   sizeDefault = options?.column === 'size'
   on('session.start', async ($, e, next) => {

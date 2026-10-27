@@ -1,6 +1,6 @@
 {
   "name": "trail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Trail: uma aba de árvore de arquivos por repo git, o da sessão e os de fora, que segue o Claude e mostra o rastro do que ele leu e editou",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -93,6 +93,19 @@
       "options": [
         "sozinha",
         "cartão"
+      ]
+    },
+    "pastaGrande": {
+      "type": "string",
+      "title": "Pasta grande",
+      "description": "Pasta com mais arquivos que isso abre dobrada: só o que o Claude tocou, o que mudou no git e 3 vizinhos de cada, o resto em blocos \"… N arquivos\" clicáveis; o número no cabeçalho abre a pasta inteira. 0 desliga.",
+      "default": "200",
+      "options": [
+        "200",
+        "100",
+        "500",
+        "1000",
+        "0"
       ]
     }
   },

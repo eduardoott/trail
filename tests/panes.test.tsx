@@ -316,7 +316,8 @@ const LIT = 1 + 5 + 12 + 6 + 4 + 4
 const specs = async (ui: any): Promise<any[]> => clientRows(await ui.drawn()) ?? []
 // The bar's ▌ sits in the gutter column every row gets while moderno plays.
 const barOf = (rows: any[]) => rows.find(r => r.left.some((s: any) => s.t.startsWith('▌')))?.id ?? null
-const rowOf = (rows: any[], name: string) => rows.find(r => r.id.endsWith(`/${name}`) || (r.id === '' && r.left.some((s: any) => s.t === name)))
+// A fold row's id ends with the id of its first hidden file: rowOf never answers with one.
+const rowOf = (rows: any[], name: string) => rows.find(r => (r.id.endsWith(`/${name}`) && !r.id.includes(' ')) || (r.id === '' && r.left.some((s: any) => s.t === name)))
 const nameAt = (row: any, name: string) => row?.left.findIndex((s: any) => s.t.startsWith(name)) ?? -1
 const nameSeg = (row: any, name: string) => row?.left[nameAt(row, name)]
 const glyphSeg = (row: any, name: string) => row?.left[nameAt(row, name) - 1]
@@ -2251,5 +2252,126 @@ test('▷ after a loop made files brings each row in on its own turn, in order',
   } finally {
     DIRS[WSL_ROOT] = root
     delete DIRS[lote]
+  }
+})
+
+// Fase 9: a folder past `pastaGrande` (200) opens folded around what matters, with `… N arquivos` blocks.
+const BIG = Array.from({ length: 1533 }, (_, i) => [`usp_${String(i).padStart(4, '0')}.sql`, 'file'] as [string, 'file'])
+async function bigWorld($: any, on: any) {
+  const w = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(w.clock, w.gate, w.read('database\\usp_0766.sql'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await w.clock.advance(10_000)
+  return w
+}
+const dbId = `${WSL_ROOT}/database`
+const foldId = (first: string) => `${dbId}\u0000${dbId}/${first}`
+const names = (rows: any[]) => rows.map((r: any) => r.id.slice(r.id.lastIndexOf('/') + 1))
+
+test('a read in a folder of 1533 files draws the file, 3 neighbours each side, two blocks and the total', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+  const db = DIRS[dbId]!
+  DIRS[dbId] = BIG
+  try {
+    const { ui } = await bigWorld($, on)
+    const rows = await specs(ui)
+    const under = rows.filter((r: any) => r.id.startsWith(`${dbId}/`) || r.id.startsWith(`${dbId}\u0000`))
+    expect(names(under.filter((r: any) => !r.id.includes('\u0000')))).toEqual(['usp_0763.sql', 'usp_0764.sql', 'usp_0765.sql', 'usp_0766.sql', 'usp_0767.sql', 'usp_0768.sql', 'usp_0769.sql'])
+    const blocks = under.filter((r: any) => r.id.includes('\u0000'))
+    expect(blocks.map((r: any) => r.id)).toEqual([foldId('usp_0000.sql'), foldId('usp_0770.sql')])
+    expect(JSON.stringify(blocks[0].left)).toContain('… 763 arquivos')
+    expect(JSON.stringify(rowOf(rows, 'database').left)).toContain('·1.533')
+  } finally {
+    DIRS[dbId] = db
+  }
+})
+
+test('a click on a block unfolds that stretch and leaves the other block', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+  const db = DIRS[dbId]!
+  DIRS[dbId] = BIG
+  try {
+    const { clock, ui } = await bigWorld($, on)
+    await ui.post({ press: foldId('usp_0000.sql') })
+    await clock.settle()
+    // The pane draws a window of rows: home and end look at each end of the folder.
+    await ui.key({ key: 'home' })
+    await clock.settle()
+    let rows = await specs(ui)
+    expect(rowOf(rows, 'usp_0000.sql')).not.toBe(undefined)
+    expect(rows.some((r: any) => r.id.includes('\u0000'))).toBe(false)
+    await ui.key({ key: 'end' })
+    await clock.settle()
+    rows = await specs(ui)
+    expect(rowOf(rows, 'usp_0769.sql')).not.toBe(undefined)
+    expect(rowOf(rows, 'usp_0771.sql')).toBe(undefined)
+    expect(rows.filter((r: any) => r.id.includes('\u0000')).map((r: any) => r.id)).toEqual([foldId('usp_0770.sql')])
+  } finally {
+    DIRS[dbId] = db
+  }
+})
+
+test('a click on the total shows the whole folder, and closing it folds it again', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+  const db = DIRS[dbId]!
+  DIRS[dbId] = BIG
+  try {
+    const { clock, ui } = await bigWorld($, on)
+    await ui.post({ flat: dbId })
+    await clock.settle()
+    await ui.key({ key: 'end' })
+    await clock.settle()
+    let rows = await specs(ui)
+    expect(rows.some((r: any) => r.id.includes('\u0000'))).toBe(false)
+    expect(rowOf(rows, 'usp_1532.sql')).not.toBe(undefined)
+    await ui.key({ key: 'home' })
+    await clock.settle()
+    expect(JSON.stringify(await ui.drawn())).toContain('·1.533')
+    await ui.post({ press: dbId })
+    await clock.settle()
+    await clock.advance(1_000)
+    await ui.post({ press: dbId })
+    await clock.settle()
+    rows = await specs(ui)
+    expect(rows.filter((r: any) => r.id.includes('\u0000')).length).toBe(2)
+    expect(rowOf(rows, 'usp_0000.sql')).toBe(undefined)
+  } finally {
+    DIRS[dbId] = db
+  }
+})
+
+test('the ± filter shows the changed file of a big folder with no block', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+  const db = DIRS[dbId]!
+  DIRS[dbId] = BIG
+  git.wslStatus = '## main...origin/main\0 M wsl-only.md\0 M database/usp_0100.sql\0'
+  try {
+    const { clock, ui } = await bigWorld($, on)
+    expect(rowOf(await specs(ui), 'usp_0100.sql')).not.toBe(undefined)
+    await ui.press({ key: 'changed' })
+    await clock.settle()
+    const rows = await specs(ui)
+    expect(rowOf(rows, 'usp_0100.sql')).not.toBe(undefined)
+    expect(rowOf(rows, 'usp_0097.sql')).toBe(undefined)
+    expect(rows.some((r: any) => r.id.includes('\u0000'))).toBe(false)
+  } finally {
+    DIRS[dbId] = db
+    git.wslStatus = WSL_STATUS
+  }
+})
+
+test('the replay of a read in a big folder reveals the 7 rows and the blocks, not the 1533 files', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+  const db = DIRS[dbId]!
+  DIRS[dbId] = BIG
+  try {
+    const { clock, ui } = await bigWorld($, on)
+    await ui.press({ key: 'collapse' })
+    await ui.press({ key: 'replay-last' })
+    // With 1533 reveals the bar would still be opening the folder here; folded, the step is on the file by now.
+    await clock.advance(30 * TICK)
+    const rows = await specs(ui)
+    expect(rowOf(rows, 'usp_0763.sql')).not.toBe(undefined)
+    expect(rowOf(rows, 'usp_0769.sql')).not.toBe(undefined)
+    expect(rowOf(rows, 'usp_0000.sql')).toBe(undefined)
+    expect(barOf(rows)).toBe(`${dbId}/usp_0766.sql`)
+  } finally {
+    DIRS[dbId] = db
   }
 })

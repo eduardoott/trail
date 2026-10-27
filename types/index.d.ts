@@ -2,7 +2,8 @@ export type FileNode = {
   id: string
   parent: string
   name: string
-  kind: 'dir' | 'file' | 'link'
+  // fold: a synthetic row standing for a hidden stretch of a folded folder (hooks/tree.ts visibleRows).
+  kind: 'dir' | 'file' | 'link' | 'fold'
   hidden: boolean
   mtime: number
   size: number
@@ -55,6 +56,9 @@ export type FileTree = {
   preview: string
   previewTop: number
   tick: number
+  // unfold: fold keys (`<dir>\0<first hidden id>`) opened by a click; flat: big folders shown whole. Session state only.
+  unfold: string[]
+  flat: string[]
 }
 
 export type Theme = {

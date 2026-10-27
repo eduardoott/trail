@@ -1,7 +1,7 @@
 // The access card, drawn the way Blast Radius (Anthropic, Apache-2.0) draws its hold.
 import type { Elements } from 'claude-code'
 
-export type Decision = 'permitir' | 'cancelar' | 'sempre' | 'tempo' | 'interrompido' | 'erro'
+export type Decision = 'allow' | 'cancel' | 'always' | 'timeout' | 'interrupted' | 'error'
 
 export type Card = {
   tool: string
@@ -34,18 +34,18 @@ export function drawCard(ui: Elements['terminal'] | Elements['desktop'], card: C
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
       <Text bold color="yellow">
-        Repo externo · o Claude quer escrever fora da sessão
+        External repo · Claude wants to write outside the session
       </Text>
-      {line('Pasta', card.folder)}
-      {card.root === null ? line('Raiz', 'resolvendo a raiz…', true) : line('Raiz', `${card.root}  (${card.title})`)}
+      {line('Folder', card.folder)}
+      {card.root === null ? line('Root', 'resolving the root…', true) : line('Root', `${card.root}  (${card.title})`)}
       {line(card.tool, card.what)}
       {card.root === null ? (
-        <Text dimColor>esperando o git dizer se é um repo</Text>
+        <Text dimColor>waiting for git to say whether it is a repo</Text>
       ) : (
         <Box key="buttons" flexDirection="row" marginTop={1} gap={2}>
-          <Button key="permitir" label="Permitir" hotkey="1" variant="primary" autoFocus onPress={decide('permitir')} />
-          <Button key="cancelar" label="Cancelar" hotkey="2" onPress={decide('cancelar')} />
-          <Button key="sempre" label="Não pedir de novo para este repo" hotkey="3" onPress={decide('sempre')} />
+          <Button key="allow" label="Allow" hotkey="1" variant="primary" autoFocus onPress={decide('allow')} />
+          <Button key="cancel" label="Cancel" hotkey="2" onPress={decide('cancel')} />
+          <Button key="always" label="Don't ask again for this repo" hotkey="3" onPress={decide('always')} />
         </Box>
       )}
     </Box>

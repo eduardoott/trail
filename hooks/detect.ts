@@ -339,7 +339,7 @@ export function shellReads(command: string, ps: boolean, home = '', cwd: string 
   return shellWrites(command, ps, home, false, true, cwd).filter(t => !writes.has(key(t)))
 }
 
-// Writes always; with `reads` (the `leitura` option) also Read, Grep, Glob and the shell readers.
+// Writes always; with `reads` (the Reads too option) also Read, Grep, Glob and the shell readers.
 export function writeTargets(e: { tool: string } & Record<string, unknown>, home = '', reads = false): Target[] {
   const ctx: Ctx = { wsl: false, cwd: null, ps: false, reads }
   const file = typeof e.file_path === 'string' ? e.file_path : typeof e.notebook_path === 'string' ? e.notebook_path : ''

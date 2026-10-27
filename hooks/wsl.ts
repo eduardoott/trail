@@ -101,7 +101,7 @@ export type Resolved = { repo: Repo } | { error: string }
 
 export async function resolveRepo($: EngineInterface, input: string, cwd: string, climb = false): Promise<Resolved> {
   const arg = input.trim().replace(/^["']|["']$/g, '')
-  if (!arg) return { error: 'falta a pasta' }
+  if (!arg) return { error: 'missing folder' }
   const unc = fromUnc(arg)
   const mnt = !unc && arg.startsWith('/') ? (mntToWin(arg) ?? (/^\/[A-Za-z](\/|$)/.test(arg) ? winForm(arg) : null)) : null
   if (unc || (!mnt && (arg.startsWith('~') || (arg.startsWith('/') && !arg.startsWith('//'))))) {
@@ -109,10 +109,10 @@ export async function resolveRepo($: EngineInterface, input: string, cwd: string
     try {
       const run = await $.process.run(argv, { timeoutMs: 30_000 })
       const [top = '', distro = ''] = run.stdout.replace(/\r/g, '').trim().split('\n')
-      if (run.exitCode !== 0 || !top) return { error: `${arg} não está num repo git do WSL` }
+      if (run.exitCode !== 0 || !top) return { error: `${arg} is not in a WSL git repo` }
       return { repo: repoOf('wsl', top.trim(), (distro.trim() || unc?.distro) ?? '') }
     } catch (err) {
-      return { error: `wsl.exe falhou: ${err instanceof Error ? err.message : String(err)}` }
+      return { error: `wsl.exe failed: ${err instanceof Error ? err.message : String(err)}` }
     }
   }
   let dir = mnt ?? (/^[A-Za-z]:[\\/]/.test(arg) ? winForm(arg) : winForm(`${cwd}/${arg}`))
@@ -120,10 +120,10 @@ export async function resolveRepo($: EngineInterface, input: string, cwd: string
   try {
     const run = await $.process.run(['git', '-C', dir, 'rev-parse', '--show-toplevel'], { timeoutMs: 15_000 })
     const top = run.stdout.trim()
-    if (run.exitCode !== 0 || !top) return { error: `${dir} não está num repo git` }
+    if (run.exitCode !== 0 || !top) return { error: `${dir} is not in a git repo` }
     return { repo: repoOf('win', top) }
   } catch (err) {
-    return { error: `git falhou: ${err instanceof Error ? err.message : String(err)}` }
+    return { error: `git failed: ${err instanceof Error ? err.message : String(err)}` }
   }
 }
 

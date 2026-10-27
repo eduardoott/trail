@@ -35,7 +35,7 @@ export const TONES: Record<string, { bright: string[]; dim: string[]; solid: str
   red: { bright: ['#ef4444', '#f87171', '#fca5a5', '#fee2e2'], dim: ['#7f1d1d', '#991b1b', '#b54040', '#c96a6a'], solid: '#f87171' },
 }
 
-// moderno replay: 5 tones per color, dark to light. TONES stays for clássico and git.
+// modern replay: 5 tones per color, dark to light. TONES stays for classic and git.
 export const RAMPS: Record<string, string[]> = {
   purple: ['#4a3f7a', '#5f51a3', '#7a6cc9', '#9b8ff0', '#c4bcff'],
   orange: ['#6b4a1e', '#8f6220', '#b87d24', '#dc9a2c', '#ffc14d'],

@@ -1,60 +1,62 @@
 # Trail
 
-Mod do Claude Code: uma aba de árvore de arquivos para cada repo git em que o Claude mexe, o da sessão e os de fora (WSL incluído). A aba do repo onde ele lê, edita ou roda comando vem para a frente sozinha, e cada arquivo tocado acende na árvore: roxo para leitura, laranja para edição, verde para arquivo novo.
+A Claude Code mod: a file tree tab for each git repo Claude works in, the session repo and outside ones (WSL included). The tab of the repo where Claude reads, edits or runs a command comes to the front by itself, and each touched file lights up in the tree: purple for reads, orange for edits, green for new files.
 
-## O que ele faz
+## What it does
 
-- Uma aba por repo git. A primeira edição do Claude num repo abre a aba dele.
-- A aba segue o Claude: quem está sendo editado vem para a frente.
-- Rastro: o que o Claude leu e editou fica aceso na árvore, com contadores de linhas.
-- Replay: os botões no topo da aba repassam o último turno, comando a comando.
-- Botão `±` mostra só os arquivos alterados; botão `Σ` troca a coluna da direita entre data e tamanho.
-- Modo cartão: em vez de abrir sozinha, um cartão pede permissão na primeira escrita num repo de fora.
+- One tab per git repo. Claude's first edit in a repo opens its tab.
+- The tab follows Claude: the repo being edited comes to the front.
+- Trail: what Claude read and edited stays lit in the tree, with line counters.
+- Replay: the buttons at the top of the tab replay the last turn, command by command.
+- The `±` button keeps only changed files; the `Σ` button toggles the right column between date and size.
+- Big folders open folded: only the files Claude touched, the ones changed in git and 3 neighbours of each are shown, the rest collapse into clickable "… N files" blocks, and the count in the header opens the whole folder.
+- Card mode: instead of opening by itself, a card asks permission on the first write in an outside repo.
 
-## Instalar
+## Install
 
-Pelo marketplace deste repositório:
+From this repo's marketplace:
 
 ```bash
 claude plugin marketplace add eduardoott/trail
 claude plugin install trail@trail
 ```
 
-Ou adicione a pasta à suite do seu time e instale a partir dela.
+Or add the folder to your team's marketplace and install from there.
 
-No terminal, a aba pede o layout fullscreen (`/tui fullscreen`) e pelo menos 110 colunas. No app desktop a aba abre na lateral.
+In the terminal, the tab needs the fullscreen layout (`/tui fullscreen`) and at least 110 columns. In the desktop app the tab opens on the side.
 
-## Comandos
+## Commands
 
 ```
-/trail abrir <pasta>      abre a aba de um repo
-/trail fechar <raiz>      fecha a aba daquele repo
-/trail esquecer <raiz>    esquece a permissão dada no cartão (ou `tudo`)
+/trail open <folder>          opens the tab of a repo
+/trail close <root>           closes the tab of that repo
+/trail forget <root | all>    forgets the permission given in the card
 ```
 
-## Ajustes
+## Settings
 
-Em `/config`, seção do plugin:
+In `/config`, plugin section:
 
-| Ajuste | Padrão | O que faz |
-|---|---|---|
-| Aba segue o Claude | on | a aba do repo em uso vem para a frente sozinha |
-| Aba do repo da sessão | on | abre a aba do repo da sessão ao iniciar |
-| Leitura também | sim | a aba abre também quando o Claude só lê |
-| Ícones | auto | Nerd Font quando houver, Unicode no app desktop |
-| Coluna da direita | date | data da última modificação ou tamanho |
-| Linha de diagnóstico | off | escreve na conversa cada troca de aba |
-| Animação do replay | moderno | clássico acende cada comando por 2 s |
-| Animação ao vivo | animado | a versão curta da animação a cada leitura ou edição |
-| Como a aba abre | sozinha | ou cartão, que pede permissão antes |
+| Setting | Key | Default | What it does |
+|---|---|---|---|
+| Tab follows Claude | `followTab` | on | the tab of the repo in use comes to the front by itself |
+| Session repo tab | `sessionTab` | on | opens the session repo's tab at startup |
+| Reads too | `reads` | yes | the tab also opens when Claude only reads |
+| Icons | `glyphs` | auto | Nerd Font when one is installed, Unicode in the desktop app |
+| Right column | `column` | date | last modified date or size |
+| Diagnostic line | `diagnostics` | off | writes a grey line in the conversation on each tab switch |
+| Replay animation | `replayAnimation` | modern | classic lights each command for 2 s |
+| Live animation | `liveAnimation` | animated | the short version of the animation on each read or edit |
+| How the tab opens | `opening` | auto | or `card`, which asks permission first |
+| Big folder | `bigFolder` | 200 | a folder with more files than this opens folded, showing only the files Claude touched, the ones changed in git and 3 neighbours of each, the rest as clickable "… N files" blocks; the count in the header opens the whole folder; 0 turns it off |
 
-## Testes
+## Tests
 
 ```bash
 claude plugin validate .
 claude plugin test .
 ```
 
-## Créditos
+## Credits
 
-A árvore nasce do filetree 0.2.24 (Kurt Buhler, MIT) e o cartão de permissão segue o Blast Radius (Anthropic, Apache-2.0). Detalhe em [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md). Licença MIT em [LICENSE](LICENSE).
+The tree starts from filetree 0.2.24 (Kurt Buhler, MIT) and the permission card follows Blast Radius (Anthropic, Apache-2.0). Details in [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md). MIT license in [LICENSE](LICENSE).

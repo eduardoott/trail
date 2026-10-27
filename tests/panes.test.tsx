@@ -3,20 +3,20 @@ import { paneId } from '../hooks/wsl'
 import { RAMPS } from '../hooks/git'
 import { BRANCH_ROW, CATCH, route, RUSH, TIMING } from '../hooks/replay'
 
-const WSL_ROOT = '//wsl.localhost/Ubuntu/home/user/meu-repo'
-const WIN_ROOT = 'C:/Users/user/Documents/Code/outro'
+const WSL_ROOT = '//wsl.localhost/Ubuntu/home/user/my-repo'
+const WIN_ROOT = 'C:/Users/user/Documents/Code/other'
 const DIRS: Record<string, [string, 'file' | 'dir'][]> = {
   [WSL_ROOT]: [['database', 'dir'], ['wsl-only.md', 'file']],
   [WIN_ROOT]: [['src', 'dir'], ['win-only.md', 'file']],
   [`${WSL_ROOT}/database`]: [['schema.sql', 'file']],
 }
 
-const FILES: Record<string, string> = { [`${WSL_ROOT}/wsl-only.md`]: 'um\ndois\n' }
+const FILES: Record<string, string> = { [`${WSL_ROOT}/wsl-only.md`]: 'one\ntwo\n' }
 const WSL_STATUS = '## main...origin/main\0 M wsl-only.md\0'
 
 const waits: (() => void)[] = []
 // front: a pane the person holds, which keeps the front whatever opens.
-const git = { winStatus: '## dev\0?? win-only.md\0', wslStatus: WSL_STATUS, numstat: '', front: '', surface: 'desktop', cwd: 'C:/Users/user/Documents/Code/projeto' }
+const git = { winStatus: '## dev\0?? win-only.md\0', wslStatus: WSL_STATUS, numstat: '', front: '', surface: 'desktop', cwd: 'C:/Users/user/Documents/Code/project' }
 
 function world(on: any, ran: string[][], opens: any[], noGit = false) {
   waits.length = 0
@@ -63,9 +63,9 @@ function world(on: any, ran: string[][], opens: any[], noGit = false) {
     // The card's wait: one step each time the test calls tick().
     if (argv[0] === 'node') return new Promise(done => waits.push(() => done(ok(''))))
     if (noGit) return { value: { exitCode: 128, stdout: '', stderr: 'not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }
-    if (argv[0] === 'wsl.exe' && argv.includes('sh')) return ok('/home/user/meu-repo\nUbuntu\n')
+    if (argv[0] === 'wsl.exe' && argv.includes('sh')) return ok('/home/user/my-repo\nUbuntu\n')
     const verb = argv.find((a, i) => i > argv.indexOf('-C') + 1 && !a.startsWith('-'))
-    if (verb === 'rev-parse' && argv.includes('--show-prefix')) return ok(argv[0] === 'wsl.exe' ? '\n/home/user/meu-repo\n' : `\n${WIN_ROOT}\n`)
+    if (verb === 'rev-parse' && argv.includes('--show-prefix')) return ok(argv[0] === 'wsl.exe' ? '\n/home/user/my-repo\n' : `\n${WIN_ROOT}\n`)
     if (verb === 'rev-parse') return ok(`${WIN_ROOT}\n`)
     if (verb === 'status') return ok(argv[0] === 'wsl.exe' ? git.wslStatus : git.winStatus)
     if (verb === 'diff' && argv.includes('--numstat') && argv[0] === 'wsl.exe') return ok(git.numstat)
@@ -75,27 +75,27 @@ function world(on: any, ran: string[][], opens: any[], noGit = false) {
 }
 
 const props = { title: 'x', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } as any
-const abrir = (args: string) => ({ command: 'trail', args: args ? `abrir ${args}` : '', origin: { kind: 'person' }, presentation: { isFullscreen: true, columns: 200 } }) as any
+const openCmd = (args: string) => ({ command: 'trail', args: args ? `open ${args}` : '', origin: { kind: 'person' }, presentation: { isFullscreen: true, columns: 200 } }) as any
 
-test('two repos open two panes of one mod, each drawing its own root and git', { options: { abaDaSessao: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+test('two repos open two panes of one mod, each drawing its own root and git', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
   const ran: string[][] = []
   const opens: any[] = []
   const clock = world(on, ran, opens)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
-  const a = await $.command.run(abrir('\\\\wsl.localhost\\Ubuntu\\home\\user\\meu-repo'))
-  const b = await $.command.run(abrir(WIN_ROOT))
+  const a = await $.command.run(openCmd('\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo'))
+  const b = await $.command.run(openCmd(WIN_ROOT))
   await clock.settle()
-  expect(JSON.stringify(a)).toContain('WSL meu-repo')
-  expect(JSON.stringify(b)).toContain('outro')
-  const wslId = paneId('wsl:/home/user/meu-repo')
+  expect(JSON.stringify(a)).toContain('WSL my-repo')
+  expect(JSON.stringify(b)).toContain('other')
+  const wslId = paneId('wsl:/home/user/my-repo')
   const winId = paneId(`win:${WIN_ROOT}`)
   expect(opens.map(o => o.id)).toEqual([wslId, winId])
-  expect(opens[0].title).toBe('WSL meu-repo')
+  expect(opens[0].title).toBe('WSL my-repo')
 
   // The WSL repo's git runs in the distro, never the Windows git over the UNC path.
   expect(ran.some(r => r[0] === 'git' && r.some(x => x.includes('wsl.localhost')))).toBe(false)
-  expect(ran.some(r => r[0] === 'wsl.exe' && r.includes('status') && r.includes('/home/user/meu-repo'))).toBe(true)
+  expect(ran.some(r => r[0] === 'wsl.exe' && r.includes('status') && r.includes('/home/user/my-repo'))).toBe(true)
 
   for (const [id, mine, other, branch] of [[wslId, 'wsl-only.md', 'win-only.md', 'main'], [winId, 'win-only.md', 'wsl-only.md', 'dev']] as const) {
     const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: id, props })
@@ -106,41 +106,41 @@ test('two repos open two panes of one mod, each drawing its own root and git', {
     expect(shown.includes(other)).toBe(false)
   }
 
-  const list = await $.command.run(abrir(''))
-  expect(JSON.stringify(list)).toContain('wsl:/home/user/meu-repo')
+  const list = await $.command.run(openCmd(''))
+  expect(JSON.stringify(list)).toContain('wsl:/home/user/my-repo')
   expect(JSON.stringify(list)).toContain(`win:${WIN_ROOT}`)
 })
 
-test('a folder outside any git repo opens nothing', { options: { abaDaSessao: 'off' } }, async ($, on) => {
+test('a folder outside any git repo opens nothing', { options: { sessionTab: 'off' } }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens, true)
   await $.session.start({ cwd: 'C:/x', surface: 'desktop', isInteractive: true })
   await clock.settle()
-  const r = await $.command.run(abrir('C:\\Users\\user\\Downloads'))
-  expect(JSON.stringify(r)).toContain('não está num repo git')
+  const r = await $.command.run(openCmd('C:\\Users\\user\\Downloads'))
+  expect(JSON.stringify(r)).toContain('is not in a git repo')
   expect(opens.length).toBe(0)
 })
 
-for (const abaSegue of ['on', 'off'] as const) {
-  test(`a read in the tab behind brings it to the front only with abaSegue ${abaSegue}`, { options: { abaSegue, abaDaSessao: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+for (const followTab of ['on', 'off'] as const) {
+  test(`a read in the tab behind brings it to the front only with followTab ${followTab}`, { options: { followTab, sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
     const opens: any[] = []
     const clock = world(on, [], opens)
     on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
     await clock.settle()
-    await $.command.run(abrir('\\\\wsl.localhost\\Ubuntu\\home\\user\\meu-repo'))
-    await $.command.run(abrir(WIN_ROOT))
+    await $.command.run(openCmd('\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo'))
+    await $.command.run(openCmd(WIN_ROOT))
     await clock.settle()
     const before = opens.length
-    await $.tool.call({ tool: 'Read', file_path: '\\\\wsl.localhost\\Ubuntu\\home\\user\\meu-repo\\wsl-only.md' } as any)
+    await $.tool.call({ tool: 'Read', file_path: '\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo\\wsl-only.md' } as any)
     await clock.settle()
     const raised = opens.slice(before).map(o => o.id)
-    expect(raised).toEqual(abaSegue === 'on' ? [paneId('wsl:/home/user/meu-repo')] : [])
+    expect(raised).toEqual(followTab === 'on' ? [paneId('wsl:/home/user/my-repo')] : [])
     expect(opens.slice(before).some(o => o.focus)).toBe(false)
   })
 }
 
-test('the session repo gets its own tab at start, once, and only with abaDaSessao on', { timeoutMs: 20_000 }, async ($, on) => {
+test('the session repo gets its own tab at start, once, and only with sessionTab on', { timeoutMs: 20_000 }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens)
   await $.session.start({ cwd: WIN_ROOT, surface: 'desktop', isInteractive: true })
@@ -152,21 +152,21 @@ test('the session repo gets its own tab at start, once, and only with abaDaSessa
   expect(opens.length).toBe(1)
 })
 
-for (const count of [150, 1500]) test(`a folder with ${count} files on the desktop still draws, inside the 100,000 character bound`, { options: { abaDaSessao: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+for (const count of [150, 1500]) test(`a folder with ${count} files on the desktop still draws, inside the 100,000 character bound`, { options: { sessionTab: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
   const small = DIRS[WIN_ROOT]!
-  DIRS[WIN_ROOT] = Array.from({ length: count }, (_, i) => [`arquivo-com-um-nome-bem-comprido-de-procedure-${String(i).padStart(4, '0')}.sql`, 'file'] as [string, 'file'])
+  DIRS[WIN_ROOT] = Array.from({ length: count }, (_, i) => [`file-com-um-nome-bem-comprido-de-procedure-${String(i).padStart(4, '0')}.sql`, 'file'] as [string, 'file'])
   try {
     const opens: any[] = []
     const clock = world(on, [], opens)
-    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
     await clock.settle()
-    await $.command.run(abrir(WIN_ROOT))
+    await $.command.run(openCmd(WIN_ROOT))
     await clock.settle()
     const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: paneId(`win:${WIN_ROOT}`), props })
     await clock.settle()
     const tree = JSON.stringify(await ui.drawn())
     const rows = JSON.stringify(await ui.drawn({ in: 'rows' }))
-    expect(rows).toContain('arquivo-com-um-nome')
+    expect(rows).toContain('file-com-um-nome')
     expect(tree.length).toBeLessThan(100_000)
     expect(rows.length).toBeLessThan(100_000)
   } finally {
@@ -174,16 +174,16 @@ for (const count of [150, 1500]) test(`a folder with ${count} files on the deskt
   }
 })
 
-test('the ± button keeps only what git counts as changed, opening the folders they sit in', { options: { abaDaSessao: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the ± button keeps only what git counts as changed, opening the folders they sit in', { options: { sessionTab: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
   const src = `${WIN_ROOT}/src`
   DIRS[src] = [['mudou.sql', 'file'], ...Array.from({ length: 30 }, (_, i) => [`intacto-${i}.sql`, 'file'] as [string, 'file'])]
   git.winStatus = '## dev\0?? win-only.md\0 M src/mudou.sql\0'
   try {
     const opens: any[] = []
     const clock = world(on, [], opens)
-    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
     await clock.settle()
-    await $.command.run(abrir(WIN_ROOT))
+    await $.command.run(openCmd(WIN_ROOT))
     await clock.settle()
     const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: paneId(`win:${WIN_ROOT}`), props })
     await clock.settle()
@@ -194,10 +194,10 @@ test('the ± button keeps only what git counts as changed, opening the folders t
     expect(rows).toContain('mudou.sql')
     expect(rows).toContain('win-only.md')
     expect(rows).not.toContain('intacto-')
-    expect(JSON.stringify(await ui.drawn())).toContain('só modificados')
+    expect(JSON.stringify(await ui.drawn())).toContain('changed only')
     await ui.press({ key: 'changed' })
     await clock.settle()
-    expect(JSON.stringify(await ui.drawn())).not.toContain('só modificados')
+    expect(JSON.stringify(await ui.drawn())).not.toContain('changed only')
     expect(JSON.stringify(await ui.drawn({ in: 'rows' }))).not.toContain('intacto-')
   } finally {
     delete DIRS[src]
@@ -214,20 +214,20 @@ async function litWorld($: any, on: any, pane = props) {
   const gate = { release: () => {}, fail: false, result: null as any }
   const held: (() => void)[] = []
   on('tool.call', () => new Promise(done => {
-    held.push(() => done(gate.fail ? { result: 'erro', text: 'erro', isError: true } : gate.result ?? { result: { text: 'ok', isError: false } }))
+    held.push(() => done(gate.fail ? { result: 'error', text: 'error', isError: true } : gate.result ?? { result: { text: 'ok', isError: false } }))
     gate.release = () => { for (const go of held.splice(0)) go() }
   }) as any)
   on('classic.Stop', () => ({}) as any)
   on('prompt.submit', (_$: any, e: any) => ({ text: e.text }) as any)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
-  await $.command.run(abrir('\\\\wsl.localhost\\Ubuntu\\home\\user\\meu-repo'))
+  await $.command.run(openCmd('\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo'))
   await clock.settle()
-  const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: paneId('wsl:/home/user/meu-repo'), props: pane })
+  const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: paneId('wsl:/home/user/my-repo'), props: pane })
   await clock.settle()
   // A lit name shimmers one character per Text, so the whole name no longer appears in one piece.
   const lit = async (name: string) => !JSON.stringify(await ui.drawn({ in: 'rows' })).includes(name)
-  const read = (name = 'wsl-only.md') => $.tool.call({ tool: 'Read', file_path: `\\\\wsl.localhost\\Ubuntu\\home\\user\\meu-repo\\${name}` } as any)
+  const read = (name = 'wsl-only.md') => $.tool.call({ tool: 'Read', file_path: `\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo\\${name}` } as any)
   return { clock, gate, lit, read, ui }
 }
 
@@ -238,7 +238,7 @@ async function command(clock: any, gate: any, call: Promise<unknown>) {
   await call
 }
 
-test('replay lights one command at a time for two seconds, and ▷ plays only the last interaction', { options: { abaDaSessao: 'off', animacao: 'clássico' }, timeoutMs: 30_000 }, async ($, on) => {
+test('replay lights one command at a time for two seconds, and ▷ plays only the last interaction', { options: { sessionTab: 'off', replayAnimation: 'classic' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, lit, read, ui } = await litWorld($, on)
   const drawn = async () => JSON.stringify(await ui.drawn())
   expect(await drawn()).not.toContain('▷')
@@ -280,7 +280,7 @@ test('replay lights one command at a time for two seconds, and ▷ plays only th
   expect(await lit('wsl-only.md')).toBe(true)
 })
 
-test('■ stops the replay, and a new command stops it too', { options: { abaDaSessao: 'off', animacao: 'clássico' }, timeoutMs: 30_000 }, async ($, on) => {
+test('■ stops the replay, and a new command stops it too', { options: { sessionTab: 'off', replayAnimation: 'classic' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, lit, read, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
   await command(clock, gate, read('wsl-only.md'))
@@ -309,12 +309,12 @@ test('■ stops the replay, and a new command stops it too', { options: { abaDaS
   expect(await lit('database')).toBe(false)
 })
 
-// moderno plays frames of TIMING.tick: the tests walk the fake clock one tick at a time.
+// modern plays frames of TIMING.tick: the tests walk the fake clock one tick at a time.
 const TICK = TIMING.tick
 // One step of a single file: jump onto it, 5 tones up, 12 icon frames, hold 6, 4 tones down, 4 between.
 const LIT = 1 + 5 + 12 + 6 + 4 + 4
 const specs = async (ui: any): Promise<any[]> => clientRows(await ui.drawn()) ?? []
-// The bar's ▌ sits in the gutter column every row gets while moderno plays.
+// The bar's ▌ sits in the gutter column every row gets while modern plays.
 const barOf = (rows: any[]) => rows.find(r => r.left.some((s: any) => s.t.startsWith('▌')))?.id ?? null
 // A fold row's id ends with the id of its first hidden file: rowOf never answers with one.
 const rowOf = (rows: any[], name: string) => rows.find(r => (r.id.endsWith(`/${name}`) && !r.id.includes(' ')) || (r.id === '' && r.left.some((s: any) => s.t === name)))
@@ -324,7 +324,7 @@ const glyphSeg = (row: any, name: string) => row?.left[nameAt(row, name) - 1]
 const MANY: [string, 'file'][] = Array.from({ length: 20 }, (_, i) => [`a${String(i).padStart(2, '0')}.md`, 'file'])
 
 // 7.1: the bar persists from step to step and walks to the next file as route plans it.
-test('the bar walks to the next file one row per tick, braking two ticks at each end, as route plans it', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the bar walks to the next file one row per tick, braking two ticks at each end, as route plans it', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   DIRS[WSL_ROOT] = [...root, ...MANY]
   try {
@@ -358,7 +358,7 @@ test('the bar walks to the next file one row per tick, braking two ticks at each
 })
 
 // The first step walks from the person's cursor, which stays where it is.
-test('the first step sets the bar out from the cursor, and the cursor does not move', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the first step sets the bar out from the cursor, and the cursor does not move', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   DIRS[WSL_ROOT] = [...root, ...MANY]
   try {
@@ -386,7 +386,7 @@ test('the first step sets the bar out from the cursor, and the cursor does not m
 })
 
 // 7.2: the bar stops on the closed folder, it opens, and its children come in one per tick.
-test('a closed folder on the way opens under the bar, its children coming in one per tick', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a closed folder on the way opens under the bar, its children coming in one per tick', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[`${WSL_ROOT}/database`]!
   DIRS[`${WSL_ROOT}/database`] = [['a.sql', 'file'], ...db]
   try {
@@ -423,7 +423,7 @@ test('a closed folder on the way opens under the bar, its children coming in one
 
 // B1: the live light opens the folder, and nobody shuts it before ▷. The step remembers it was shut,
 // so the replay shuts it again and the bar opens it.
-test('replay opens the folder the live light opened, without a collapse in between', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('replay opens the folder the live light opened, without a collapse in between', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   const drawn = async () => JSON.stringify(await ui.drawn({ in: 'rows' }))
   await $.prompt.submit({ text: 'x' } as any)
@@ -442,7 +442,7 @@ test('replay opens the folder the live light opened, without a collapse in betwe
 })
 
 // 7.3: tone k of the purple ramp on tick k of the arrival; back down after the hold, then the settled tone.
-test('the file climbs 5 tones on arrival, drops 4 after the hold and keeps the settled tone to the end', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the file climbs 5 tones on arrival, drops 4 after the hold and keeps the settled tone to the end', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   const ramp = RAMPS.purple!
   const tone = async () => nameSeg(rowOf(await specs(ui), 'wsl-only.md'), 'wsl-only.md')?.c
@@ -477,7 +477,7 @@ test('the file climbs 5 tones on arrival, drops 4 after the hold and keeps the s
 // 8.4: then it stays still in tone 3 through the hold (6) and the 4 tones down, and leaves on the settle.
 // The desktop draws plain glyphs; glyphs nerd draws the Nerd Font ones.
 for (const [glyphs, icon] of [['auto', '⌕'], ['nerd', '\u{f002}']] as const) {
-  test(`a Read plays its ${glyphs} icon for 12 ticks with its tone cycling, then keeps it still in tone 3 until the settle`, { options: { abaDaSessao: 'off', animacao: 'moderno', glyphs }, timeoutMs: 30_000 }, async ($, on) => {
+  test(`a Read plays its ${glyphs} icon for 12 ticks with its tone cycling, then keeps it still in tone 3 until the settle`, { options: { sessionTab: 'off', replayAnimation: 'modern', glyphs }, timeoutMs: 30_000 }, async ($, on) => {
     const { clock, gate, read, ui } = await litWorld($, on)
     const ramp = RAMPS.purple!
     const glyph = async () => glyphSeg(rowOf(await specs(ui), 'wsl-only.md'), 'wsl-only.md')
@@ -503,13 +503,13 @@ for (const [glyphs, icon] of [['auto', '⌕'], ['nerd', '\u{f002}']] as const) {
   })
 }
 
-const atWsl = (name: string) => `\\\\wsl.localhost\\Ubuntu\\home\\user\\meu-repo\\${name}`
+const atWsl = (name: string) => `\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo\\${name}`
 
 // 7.5: round(5 × frame / 8) reaches 5 only on frame 8 of the ✎ icon; the dots grow one every 3 ticks.
-test('an Edit counts its lines up over 8 ticks of the ✎ icon, with dots after the name', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('an Edit counts its lines up over 8 ticks of the ✎ icon, with dots after the name', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
-  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'dois', new_string: 'dois\na\nb\nc\nd\ne' } as any))
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'two\na\nb\nc\nd\ne' } as any))
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.advance(10_000)
   await ui.press({ key: 'replay-last' })
@@ -536,14 +536,14 @@ test('an Edit counts its lines up over 8 ticks of the ✎ icon, with dots after 
 
 // Edit: two lines more, counted during the icon. Write of a new file: hidden until its own step (D6),
 // then drawn with git's ? badge.
-test('an Edit records added and removed lines, and a Write of a new file records born', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('an Edit records added and removed lines, and a Write of a new file records born', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   try {
     const { clock, gate, ui } = await litWorld($, on)
     const rows = async () => JSON.stringify(await ui.drawn({ in: 'rows' }))
     const drawn = async () => JSON.stringify(await ui.drawn())
     await $.prompt.submit({ text: 'x' } as any)
-    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'dois', new_string: 'dois\ntres\nquatro' } as any))
+    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'two\ntres\nquatro' } as any))
     await $.classic.Stop({ stop_hook_active: false } as any)
     await clock.advance(10_000)
     expect(await rows()).not.toContain('" +2"')
@@ -555,22 +555,22 @@ test('an Edit records added and removed lines, and a Write of a new file records
     expect(await rows()).not.toContain('" +2"')
 
     await $.prompt.submit({ text: 'y' } as any)
-    const call = $.tool.call({ tool: 'Write', file_path: atWsl('novo.md'), content: 'a\nb' } as any)
+    const call = $.tool.call({ tool: 'Write', file_path: atWsl('new.md'), content: 'a\nb' } as any)
     await clock.advance(50)
-    DIRS[WSL_ROOT] = [...root, ['novo.md', 'file']]
-    git.wslStatus = `${WSL_STATUS}?? novo.md\0`
+    DIRS[WSL_ROOT] = [...root, ['new.md', 'file']]
+    git.wslStatus = `${WSL_STATUS}?? new.md\0`
     gate.release()
     await call
     await $.classic.Stop({ stop_hook_active: false } as any)
     await clock.advance(10_000)
-    expect(await rows()).toContain('novo.md')
+    expect(await rows()).toContain('new.md')
     await ui.press({ key: 'replay-all' })
     await clock.advance(10)
     expect(await drawn()).toContain('■ 1/2')
-    expect(await rows()).not.toContain('novo.md')
+    expect(await rows()).not.toContain('new.md')
     await clock.advance(LIT * TICK)
     expect(await drawn()).toContain('■ 2/2')
-    expect(await rows()).toContain('novo.md')
+    expect(await rows()).toContain('new.md')
     expect(await rows()).toContain('" ?"')
   } finally {
     DIRS[WSL_ROOT] = root
@@ -579,14 +579,14 @@ test('an Edit records added and removed lines, and a Write of a new file records
 })
 
 // D7: the row counts from 0 to 2 over the icon, the top adds the count to git's total, both go back after.
-test('counters count up from zero during the icon and go back to the git numbers after', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('counters count up from zero during the icon and go back to the git numbers after', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   try {
     git.numstat = '5\t1\twsl-only.md\0'
     const { clock, gate, ui } = await litWorld($, on)
     const rows = async () => JSON.stringify(await ui.drawn({ in: 'rows' }))
     const drawn = async () => JSON.stringify(await ui.drawn())
     await $.prompt.submit({ text: 'x' } as any)
-    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'dois', new_string: 'dois\ntres\nquatro' } as any))
+    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'two\ntres\nquatro' } as any))
     await $.classic.Stop({ stop_hook_active: false } as any)
     await clock.advance(10_000)
     expect(await rows()).toContain('" +5"')
@@ -610,7 +610,7 @@ test('counters count up from zero during the icon and go back to the git numbers
 
 // The file is gone from the tree after the rm; its step draws it struck through in its old place,
 // and it leaves the list on the settle.
-test('a shell rm records gone, and the replay shows a struck ghost that leaves on the settle', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a shell rm records gone, and the replay shows a struck ghost that leaves on the settle', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   try {
     const { clock, gate, ui } = await litWorld($, on)
@@ -647,7 +647,7 @@ test('a shell rm records gone, and the replay shows a struck ghost that leaves o
 })
 
 // 7.6: the window moves only when the bar leaves the band, 3 rows from the top and 4 from the bottom.
-test('the window follows the bar only when it leaves the band', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the window follows the bar only when it leaves the band', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   DIRS[WSL_ROOT] = [...root, ...MANY]
   try {
@@ -687,7 +687,7 @@ test('the window follows the bar only when it leaves the band', { options: { aba
 })
 
 // 7.7: ■ puts out the bar, the icon, the tones and the rows still hidden at once, and no timer outlives it.
-test('■ in the middle of a step clears the bar, the icon, the tones and the hidden rows in one go', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('■ in the middle of a step clears the bar, the icon, the tones and the hidden rows in one go', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[`${WSL_ROOT}/database`]!
   DIRS[`${WSL_ROOT}/database`] = [['a.sql', 'file'], ...db]
   try {
@@ -729,7 +729,7 @@ test('■ in the middle of a step clears the bar, the icon, the tones and the hi
 
 // Had a timer outlived the stop, the folder would open (▾) later on its own.
 // The desktop scrollbar cannot show here: three rows never overflow the 40-row window.
-test('■ before the bar reaches the folder leaves it shut, and a new command stops moderno too', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('■ before the bar reaches the folder leaves it shut, and a new command stops modern too', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   const rows = async () => JSON.stringify(await ui.drawn({ in: 'rows' }))
   await $.prompt.submit({ text: 'x' } as any)
@@ -764,7 +764,7 @@ test('■ before the bar reaches the folder leaves it shut, and a new command st
   expect(barOf(await specs(ui))).toBe(null)
 })
 
-test('a step whose file is gone is skipped without stalling the player', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a step whose file is gone is skipped without stalling the player', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   try {
     const { clock, gate, read, ui } = await litWorld($, on)
@@ -789,7 +789,7 @@ test('a step whose file is gone is skipped without stalling the player', { optio
 })
 
 // 7.8: the speed button scales the whole tick: at 0.5x each frame takes twice the ms.
-test('at 0.5x the same step takes twice the time, tick by tick', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('at 0.5x the same step takes twice the time, tick by tick', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   const ramp = RAMPS.purple!
   const tone = async () => nameSeg(rowOf(await specs(ui), 'wsl-only.md'), 'wsl-only.md')?.c
@@ -817,7 +817,7 @@ test('at 0.5x the same step takes twice the time, tick by tick', { options: { ab
 })
 
 // At 2x each frame takes half the ms: the step that lasts LIT ticks at 1x ends at LIT / 2.
-test('at 2x the same step takes half the time', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('at 2x the same step takes half the time', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   await ui.press({ key: 'speed' })
   try {
@@ -839,7 +839,7 @@ test('at 2x the same step takes half the time', { options: { abaDaSessao: 'off',
 })
 
 // A reload starts the module over: the trail and the turn wait in $.state for the replay after it.
-test('the trail and the turn are kept in state, for the replay after a reload', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the trail and the turn are kept in state, for the replay after a reload', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const saved: Record<string, any> = {}
   on('state.set', (_$: any, e: any, next: any) => {
     if (e.plugin === 'trail' && (e.key === 'trail' || e.key === 'turn')) saved[e.key] = e.value
@@ -867,7 +867,7 @@ function trailSaved(on: any): { trail: any[] } {
 
 // 13.3: every step keeps the labels of the command that made it; the early light and the result of the same call
 // record once (`Read`, not `Read` twice).
-test('a Read, an Edit and a sed record their names on the step', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a Read, an Edit and a sed record their names on the step', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const saved = trailSaved(on)
   const { clock, gate, read } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
@@ -876,7 +876,7 @@ test('a Read, an Edit and a sed record their names on the step', { options: { ab
   expect(saved.trail.length).toBe(1)
   expect(saved.trail[0].names).toEqual(['Read'])
 
-  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'dois', new_string: 'tres' } as any))
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'three' } as any))
   await clock.settle()
   expect(saved.trail.length).toBe(2)
   expect(saved.trail[1].names).toEqual(['Edit'])
@@ -889,13 +889,13 @@ test('a Read, an Edit and a sed record their names on the step', { options: { ab
   await $.classic.Stop({ stop_hook_active: false } as any)
 })
 
-test('a git add and commit record `git add` and `git commit` on the branch step', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a git add and commit record `git add` and `git commit` on the branch step', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const saved = trailSaved(on)
   const { clock, gate } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
   // The commit is proven by the sha core reports in the result.
   gate.result = { result: { text: 'ok', isError: false, gitOperation: { commit: { sha: 'abc1234def' } } } }
-  await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/meu-repo add -A && git -C /home/user/meu-repo commit -m x' } as any))
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo add -A && git -C /home/user/my-repo commit -m x' } as any))
   await clock.settle()
   const step = saved.trail.find((one: any) => BRANCH_ROW in one.tones)
   expect(step?.tones[BRANCH_ROW]).toBe('green')
@@ -911,7 +911,7 @@ const DARK_TEXT = '#1b1b1f'
 // The chips of the branch row, drawn as Text with a backgroundColor: the label and its background.
 const branchChips = (drawn: any): [string, string][] => [...JSON.stringify(drawn).matchAll(/"backgroundColor":"(#[0-9a-fA-F]{6})"[^{}]*\},"children":\["([^"]+)"\]/g)].map(m => [m[2]!, m[1]!])
 
-test('▷ of a Read draws a Read chip after the name in the tone of the frame, gone once settled, none before the step reaches it', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('▷ of a Read draws a Read chip after the name in the tone of the frame, gone once settled, none before the step reaches it', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   const ramp = RAMPS.purple!
   const chips = async () => afterName(rowOf(await specs(ui), 'wsl-only.md'), 'wsl-only.md')
@@ -953,7 +953,7 @@ test('▷ of a Read draws a Read chip after the name in the tone of the frame, g
 
 const SIX = `sed -i s/a/b/ '${atWsl('wsl-only.md')}'; cat '${atWsl('wsl-only.md')}'; wc -l '${atWsl('wsl-only.md')}'; head '${atWsl('wsl-only.md')}'; tail '${atWsl('wsl-only.md')}'; grep x '${atWsl('wsl-only.md')}'`
 
-test('a Bash of six commands draws four chips and a +2', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a Bash of six commands draws four chips and a +2', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
   await command(clock, gate, $.tool.call({ tool: 'Bash', command: SIX } as any))
@@ -969,7 +969,7 @@ test('a Bash of six commands draws four chips and a +2', { options: { abaDaSessa
   expect(segs.some((s: any) => s.sh || s.spin)).toBe(false)
 })
 
-test('glyphs plain draws the same square chip', { options: { abaDaSessao: 'off', animacao: 'moderno', glyphs: 'plain' }, timeoutMs: 30_000 }, async ($, on) => {
+test('glyphs plain draws the same square chip', { options: { sessionTab: 'off', replayAnimation: 'modern', glyphs: 'plain' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
   await command(clock, gate, $.tool.call({ tool: 'Bash', command: `sed -i 's/a/b/' '${atWsl('wsl-only.md')}'` } as any))
@@ -984,7 +984,7 @@ test('glyphs plain draws the same square chip', { options: { abaDaSessao: 'off',
   expect(typeof segs[1].bg).toBe('string')
 })
 
-test('clássico draws no chip, live or on ▷', { options: { abaDaSessao: 'off', animacao: 'clássico' }, timeoutMs: 30_000 }, async ($, on) => {
+test('classic draws no chip, live or on ▷', { options: { sessionTab: 'off', replayAnimation: 'classic' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
   await command(clock, gate, read('wsl-only.md'))
@@ -999,7 +999,7 @@ test('clássico draws no chip, live or on ▷', { options: { abaDaSessao: 'off',
   }
 })
 
-test('aoVivo instantâneo draws no chip on the lit row', { options: { abaDaSessao: 'off', animacao: 'moderno', aoVivo: 'instantâneo' }, timeoutMs: 30_000 }, async ($, on) => {
+test('liveAnimation instant draws no chip on the lit row', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
   await command(clock, gate, read('wsl-only.md'))
@@ -1009,7 +1009,7 @@ test('aoVivo instantâneo draws no chip on the lit row', { options: { abaDaSessa
   expect((await specs(ui)).every((r: any) => r.left.every((s: any) => !s.bg))).toBe(true)
 })
 
-test('live: the Read chip shows on the row while its frames play and leaves with them', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('live: the Read chip shows on the row while its frames play and leaves with them', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   const ramp = RAMPS.purple!
   await $.prompt.submit({ text: 'x' } as any)
@@ -1035,10 +1035,10 @@ test('live: the Read chip shows on the row while its frames play and leaves with
   expect(JSON.stringify(await ui.drawn({ in: 'rows' }))).not.toContain(' Read ')
 })
 
-// 25/10, Eduardo on the 0.8.1: "tem uns que aparecem antes da hora [...] deveria aparecer só junto com a animação daquela
-// linha, e apenas aparecer em uma linha de cada vez". The chip of a row comes with the row's own first tone, never
+// 25/10, Eduardo on the 0.8.1: "some show up before their time [...] it should show only with that row's
+// animation, and on one row at a time". The chip of a row comes with the row's own first tone, never
 // while the bar travels to it or while it waits in the queue behind another file.
-test('live: a chip comes only with its own row\'s first tone, one row at a time, in the order the files play', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('live: a chip comes only with its own row\'s first tone, one row at a time, in the order the files play', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   const teal = RAMPS.teal!
   const chipOn = (rows: any[], name: string) => afterName(rowOf(rows, name), name).some((s: any) => s.t === ' sed ')
@@ -1070,12 +1070,12 @@ test('live: a chip comes only with its own row\'s first tone, one row at a time,
   await clock.settle()
 })
 
-test('live: a git commit draws its `git commit` chip on the branch row in green', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('live: a git commit draws its `git commit` chip on the branch row in green', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   const green = RAMPS.green!
   await $.prompt.submit({ text: 'x' } as any)
   gate.result = { result: { text: 'ok', isError: false, gitOperation: { commit: { sha: 'abc1234def' } } } }
-  await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/meu-repo add -A && git -C /home/user/meu-repo commit -m x' } as any))
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo add -A && git -C /home/user/my-repo commit -m x' } as any))
   await clock.settle()
   let found: [string, string][] = []
   for (let i = 0; i < 40 && !found.some(([label, bg]) => label === ' git commit ' && green.includes(bg)); i++) {
@@ -1092,7 +1092,7 @@ test('live: a git commit draws its `git commit` chip on the branch row in green'
   expect(branchChips(await ui.drawn()).some(([label]) => label === ' git commit ')).toBe(false)
 })
 
-test('a Write that fails records nothing', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a Write that fails records nothing', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   gate.fail = true
   await $.prompt.submit({ text: 'x' } as any)
@@ -1107,7 +1107,7 @@ test('a Write that fails records nothing', { options: { abaDaSessao: 'off', anim
 })
 
 // The lit name shimmers one character per Text, so an open folder shows as its ▾ caret.
-test('clássico opens every folder at once, as it always did', { options: { abaDaSessao: 'off', animacao: 'clássico' }, timeoutMs: 30_000 }, async ($, on) => {
+test('classic opens every folder at once, as it always did', { options: { sessionTab: 'off', replayAnimation: 'classic' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, lit, read, ui } = await litWorld($, on)
   const rows = async () => JSON.stringify(await ui.drawn({ in: 'rows' }))
   await $.prompt.submit({ text: 'x' } as any)
@@ -1124,11 +1124,11 @@ test('clássico opens every folder at once, as it always did', { options: { abaD
   expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
 })
 
-// The light of today: moderno with aoVivo instantâneo, and clássico, light at once.
-const INSTANT = [{ aoVivo: 'instantâneo' }, { animacao: 'clássico' }] as const
+// The light of today: modern with liveAnimation instant, and classic, light at once.
+const INSTANT = [{ liveAnimation: 'instant' }, { replayAnimation: 'classic' }] as const
 for (const instant of INSTANT) {
 const how = Object.values(instant)[0]
-test(`a file lights as the call starts, stays lit between calls, and goes out when the answer ends (${how})`, { options: { abaDaSessao: 'off', ...instant }, timeoutMs: 30_000 }, async ($, on) => {
+test(`a file lights as the call starts, stays lit between calls, and goes out when the answer ends (${how})`, { options: { sessionTab: 'off', ...instant }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, lit, read } = await litWorld($, on)
   expect(await lit('wsl-only.md')).toBe(false)
   const first = read()
@@ -1143,7 +1143,7 @@ test(`a file lights as the call starts, stays lit between calls, and goes out wh
   expect(await lit('wsl-only.md')).toBe(false)
 })
 
-test(`a light lasts at least five seconds, even when the next command or the end of the answer comes sooner (${how})`, { options: { abaDaSessao: 'off', ...instant }, timeoutMs: 30_000 }, async ($, on) => {
+test(`a light lasts at least five seconds, even when the next command or the end of the answer comes sooner (${how})`, { options: { sessionTab: 'off', ...instant }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, lit, read } = await litWorld($, on)
   const first = read()
   await clock.advance(50)
@@ -1168,7 +1168,7 @@ test(`a light lasts at least five seconds, even when the next command or the end
 })
 }
 
-// 8.2: aoVivo animado (the default) with moderno plays each live light as the short replay of its step.
+// 8.2: liveAnimation animated (the default) with modern plays each live light as the short replay of its step.
 // The lit row's name carries the tone (sh), dim on a folder the light opened.
 // The live light's lit row draws the settled tone of its ramp, bold, where the instant light shimmers.
 const SETTLED = new Set(Object.values(RAMPS).map(r => r[1]))
@@ -1177,7 +1177,7 @@ const lightOf = (row: any, name: string): 'bright' | 'dim' | null => {
   if (!seg?.sh) return seg?.b && SETTLED.has(seg.c) ? 'bright' : null
   return seg.dim ? 'dim' : 'bright'
 }
-const LIVE_OPTIONS = { abaDaSessao: 'off', animacao: 'moderno' } as const
+const LIVE_OPTIONS = { sessionTab: 'off', replayAnimation: 'modern' } as const
 // A folder on the way to a live-lit file: its child's ramp at the folder tone, bold, never the shimmer.
 const DIM_TONE = 2
 const liveFolder = (row: any, name: string, ramp: string) => {
@@ -1229,7 +1229,7 @@ test('live: tool.call answers before the first tick of its animation', { options
 
 test('live: a second Edit two ticks after the first plays in CATCH, lit at most 10 ticks after the first', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
-  const edit = (name: string) => $.tool.call({ tool: 'Edit', file_path: atWsl(name), old_string: 'dois', new_string: 'dois\ntres' } as any)
+  const edit = (name: string) => $.tool.call({ tool: 'Edit', file_path: atWsl(name), old_string: 'two', new_string: 'two\ntres' } as any)
   await $.prompt.submit({ text: 'x' } as any)
   const first = edit('wsl-only.md')
   await clock.settle()
@@ -1263,7 +1263,7 @@ async function litTicks(clock: any, ui: any, names: string[], limit: number): Pr
   return at
 }
 // One shell command reading these files of the repo's root, all in one light.
-const catAll = ($: any, names: string[]) => $.tool.call({ tool: 'Bash', command: `cat ${names.map(name => `//wsl.localhost/Ubuntu/home/user/meu-repo/${name}`).join(' ')}` } as any)
+const catAll = ($: any, names: string[]) => $.tool.call({ tool: 'Bash', command: `cat ${names.map(name => `//wsl.localhost/Ubuntu/home/user/my-repo/${name}`).join(' ')}` } as any)
 const runOf = async (ui: any) => JSON.stringify(await ui.drawn()).match(/▸ (\d+) de (\d+)/)?.slice(1).map(Number) ?? null
 
 test('live: eight Reads at once play one at a time, each on its own tick, all lit within 80 ticks', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
@@ -1365,7 +1365,7 @@ test('live: past 30 waiting the oldest light at once with no frames, and the ani
   }
 })
 
-test('rows draw each lit segment in one Text once the lit characters pass 1500', { options: { abaDaSessao: 'off', animacao: 'clássico' }, timeoutMs: 30_000 }, async ($, on) => {
+test('rows draw each lit segment in one Text once the lit characters pass 1500', { options: { sessionTab: 'off', replayAnimation: 'classic' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   const many: [string, 'file'][] = Array.from({ length: 50 }, (_, i) => [`relatorio-trimestral-numero-${String(i).padStart(2, '0')}.md`, 'file'])
   DIRS[WSL_ROOT] = [...root, ...many]
@@ -1449,8 +1449,8 @@ test('live: a Read into the folder the step before is still opening replays with
 // The same command and the same end of the answer, with the light of today and with the live one:
 // 10 ticks after the end the tab is the same, and it goes out on the same clock.
 const stopDrawn: Record<string, string[]> = {}
-for (const aoVivo of ['instantâneo', 'animado'] as const) {
-  test(`classic.Stop on tick 3 of a live step leaves the tab as lightUp and unlight do (${aoVivo})`, { options: { ...LIVE_OPTIONS, aoVivo }, timeoutMs: 30_000 }, async ($, on) => {
+for (const liveAnimation of ['instant', 'animated'] as const) {
+  test(`classic.Stop on tick 3 of a live step leaves the tab as lightUp and unlight do (${liveAnimation})`, { options: { ...LIVE_OPTIONS, liveAnimation }, timeoutMs: 30_000 }, async ($, on) => {
     const { clock, gate, read, ui } = await litWorld($, on)
     // A button's handle is new on each draw.
     const drawn = async () => (JSON.stringify(await ui.drawn()) + JSON.stringify(await ui.drawn({ in: 'rows' }))).replace(/"handle":\d+/g, '')
@@ -1460,7 +1460,7 @@ for (const aoVivo of ['instantâneo', 'animado'] as const) {
     gate.release()
     await call
     await clock.advance(3 * TICK)
-    if (aoVivo === 'animado') {
+    if (liveAnimation === 'animated') {
       // Mid step: the bar on its way, the file not lit yet.
       expect(barOf(await specs(ui))).not.toBe(null)
       expect(lightOf(rowOf(await specs(ui), 'schema.sql'), 'schema.sql')).toBe(null)
@@ -1470,7 +1470,7 @@ for (const aoVivo of ['instantâneo', 'animado'] as const) {
     const rows = await specs(ui)
     expect(barOf(rows)).toBe(null)
     expect(lightOf(rowOf(rows, 'schema.sql'), 'schema.sql')).toBe('bright')
-    if (aoVivo === 'animado') expect(liveFolder(rowOf(rows, 'database'), 'database', 'purple')).toBe(true)
+    if (liveAnimation === 'animated') expect(liveFolder(rowOf(rows, 'database'), 'database', 'purple')).toBe(true)
     else expect(lightOf(rowOf(rows, 'database'), 'database')).toBe('dim')
     const lit = await drawn()
     await clock.advance(5_000)
@@ -1478,9 +1478,9 @@ for (const aoVivo of ['instantâneo', 'animado'] as const) {
     expect(lightOf(rowOf(await specs(ui), 'schema.sql'), 'schema.sql')).toBe(null)
     await clock.advance(5_000)
     expect(await drawn()).toBe(out)
-    stopDrawn[aoVivo] = [lit, out]
+    stopDrawn[liveAnimation] = [lit, out]
     // Lit, the live light keeps its ramps where the instant light shimmers; out, the tab is the same.
-    if (aoVivo === 'animado') expect(stopDrawn.animado![1]).toEqual(stopDrawn['instantâneo']![1])
+    if (liveAnimation === 'animated') expect(stopDrawn.animated![1]).toEqual(stopDrawn['instant']![1])
   })
 }
 
@@ -1567,7 +1567,7 @@ test('live: an Edit whose result comes after its frames plays and stays ✎ oran
   const { clock, gate, ui } = await litWorld($, on)
   const ramp = RAMPS.orange!
   await $.prompt.submit({ text: 'x' } as any)
-  const call = $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'dois', new_string: 'dois\ntres' } as any)
+  const call = $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'two\ntres' } as any)
   await clock.settle()
   const n =await ticksUntil(clock, ui, rows => isBright(rows))
   expect(n).toBeLessThanOrEqual(40)
@@ -1590,7 +1590,7 @@ test('live: a second step on the same file replaces its mark, ⌕ after the Read
   await first
   await ticksUntil(clock, ui, rows => isBright(rows))
   expect(await markOf(ui)).toEqual({ t: '⌕ ', c: RAMPS.purple![2] })
-  const second = $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'dois', new_string: 'dois\ntres' } as any)
+  const second = $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'two\ntres' } as any)
   await clock.settle()
   gate.release()
   await second
@@ -1617,7 +1617,7 @@ test('live: ▷ while the player is parked takes the marks with it', { options: 
 
 for (const instant of INSTANT) {
   const how = Object.values(instant)[0]
-  test(`the instant light draws no mark on the lit row (${how})`, { options: { abaDaSessao: 'off', animacao: 'moderno', ...instant }, timeoutMs: 30_000 }, async ($, on) => {
+  test(`the instant light draws no mark on the lit row (${how})`, { options: { sessionTab: 'off', replayAnimation: 'modern', ...instant }, timeoutMs: 30_000 }, async ($, on) => {
     const { clock, gate, read, ui } = await litWorld($, on)
     await command(clock, gate, read())
     await clock.settle()
@@ -1626,8 +1626,8 @@ for (const instant of INSTANT) {
   })
 }
 
-const CARD = 'trail-cartao'
-const NEW_FILE = 'C:\\Users\\user\\Documents\\Code\\outro\\novo.md'
+const CARD = 'trail-card'
+const NEW_FILE = 'C:\\Users\\user\\Documents\\Code\\other\\new.md'
 
 async function until(clock: any, ok: () => boolean) {
   for (let i = 0; i < 40 && !ok(); i++) {
@@ -1636,8 +1636,8 @@ async function until(clock: any, ok: () => boolean) {
   }
 }
 
-// abertura sozinha (the default): the first edit in a repo opens its tab, with no card.
-async function sozinhaWorld($: any, on: any, cwd: string, noGit = false) {
+// opening auto (the default): the first edit in a repo opens its tab, with no card.
+async function autoWorld($: any, on: any, cwd: string, noGit = false) {
   const opens: any[] = []
   const clock = world(on, [], opens, noGit)
   on('session.root', () => ({ value: cwd }))
@@ -1656,8 +1656,8 @@ async function sozinhaWorld($: any, on: any, cwd: string, noGit = false) {
   return { opens, clock, edit }
 }
 
-test('an Edit in a git repo with no tab opens the tab by itself, with no card', { options: { abaDaSessao: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
-  const { opens, edit } = await sozinhaWorld($, on, 'C:/Users/user/Documents/Code/projeto')
+test('an Edit in a git repo with no tab opens the tab by itself, with no card', { options: { sessionTab: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { opens, edit } = await autoWorld($, on, 'C:/Users/user/Documents/Code/project')
   const result = await edit(NEW_FILE)
   const tab = paneId(`win:${WIN_ROOT}`)
   expect(opens.some(o => o.id === CARD)).toBe(false)
@@ -1666,13 +1666,13 @@ test('an Edit in a git repo with no tab opens the tab by itself, with no card', 
   expect(JSON.stringify(result)).toContain('ok')
 })
 
-test('a tab the person closed comes back on the next edit', { options: { abaDaSessao: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
-  const { opens, clock, edit } = await sozinhaWorld($, on, 'C:/Users/user/Documents/Code/projeto')
+test('a tab the person closed comes back on the next edit', { options: { sessionTab: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { opens, clock, edit } = await autoWorld($, on, 'C:/Users/user/Documents/Code/project')
   const tab = paneId(`win:${WIN_ROOT}`)
   await edit(NEW_FILE)
   expect(opens.filter(o => o.id === tab).length).toBe(1)
-  // The test's $ has no ui.close (a person's close is the engine's to raise): fechar closes it the same way.
-  await $.command.run({ ...abrir(''), args: `fechar ${WIN_ROOT}` })
+  // The test's $ has no ui.close (a person's close is the engine's to raise): close closes it the same way.
+  await $.command.run({ ...openCmd(''), args: `close ${WIN_ROOT}` })
   await clock.settle()
   await edit(NEW_FILE)
   expect(opens.filter(o => o.id === tab).length).toBe(2)
@@ -1680,18 +1680,18 @@ test('a tab the person closed comes back on the next edit', { options: { abaDaSe
 })
 
 test('the session repo tab also comes back after being closed', { timeoutMs: 30_000 }, async ($, on) => {
-  const { opens, clock, edit } = await sozinhaWorld($, on, WIN_ROOT)
+  const { opens, clock, edit } = await autoWorld($, on, WIN_ROOT)
   const tab = paneId(`win:${WIN_ROOT}`)
   expect(opens.map(o => o.id)).toEqual([tab])
-  // The test's $ has no ui.close (a person's close is the engine's to raise): fechar closes it the same way.
-  await $.command.run({ ...abrir(''), args: `fechar ${WIN_ROOT}` })
+  // The test's $ has no ui.close (a person's close is the engine's to raise): close closes it the same way.
+  await $.command.run({ ...openCmd(''), args: `close ${WIN_ROOT}` })
   await clock.settle()
   await edit(`${WIN_ROOT}/win-only.md`)
   expect(opens.filter(o => o.id === tab).length).toBe(2)
 })
 
-test('a Read in a git repo with no tab opens the tab too, leitura being on by default', { options: { abaDaSessao: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
-  const { opens, clock } = await sozinhaWorld($, on, 'C:/Users/user/Documents/Code/projeto')
+test('a Read in a git repo with no tab opens the tab too, reads being on by default', { options: { sessionTab: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { opens, clock } = await autoWorld($, on, 'C:/Users/user/Documents/Code/project')
   const tab = paneId(`win:${WIN_ROOT}`)
   let result: any
   void $.tool.call({ tool: 'Read', file_path: NEW_FILE } as any).then((r: any) => (result = r))
@@ -1701,28 +1701,28 @@ test('a Read in a git repo with no tab opens the tab too, leitura being on by de
   expect(JSON.stringify(result)).toContain('ok')
 })
 
-test('with leitura não, a Read opens nothing', { options: { abaDaSessao: 'off', leitura: 'não' }, timeoutMs: 30_000 }, async ($, on) => {
-  const { opens, clock } = await sozinhaWorld($, on, 'C:/Users/user/Documents/Code/projeto')
+test('with reads no, a Read opens nothing', { options: { sessionTab: 'off', reads: 'no' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { opens, clock } = await autoWorld($, on, 'C:/Users/user/Documents/Code/project')
   let result: any
   void $.tool.call({ tool: 'Read', file_path: NEW_FILE } as any).then((r: any) => (result = r))
   await until(clock, () => result !== undefined)
   expect(opens.length).toBe(0)
 })
 
-test('an Edit outside any git repo opens nothing', { options: { abaDaSessao: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
-  const { opens, edit } = await sozinhaWorld($, on, 'C:/Users/user/Documents/Code/projeto', true)
+test('an Edit outside any git repo opens nothing', { options: { sessionTab: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { opens, edit } = await autoWorld($, on, 'C:/Users/user/Documents/Code/project', true)
   const result = await edit('C:\\Users\\user\\Downloads\\a.txt')
   expect(JSON.stringify(result)).toContain('ok')
   expect(opens.length).toBe(0)
 })
 
-test('with abertura cartão the card behaves as before', { options: { abaDaSessao: 'off', abertura: 'cartão' }, timeoutMs: 30_000 }, async ($, on) => {
+test('with opening card the card behaves as before', { options: { sessionTab: 'off', opening: 'card' }, timeoutMs: 30_000 }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens)
-  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/projeto' }))
+  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/project' }))
   on('ui.close', () => ({ value: undefined }))
   on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
   let result: any
   const call = $.tool.call({ tool: 'Edit', file_path: NEW_FILE, old_string: 'x', new_string: 'y' } as any).then(r => (result = r))
@@ -1730,25 +1730,25 @@ test('with abertura cartão the card behaves as before', { options: { abaDaSessa
   expect(opens.some(o => o.id === CARD)).toBe(true)
   expect(opens.some(o => o.id === paneId(`win:${WIN_ROOT}`))).toBe(false)
   const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: CARD, props })
-  await ui.press({ key: 'cancelar' })
+  await ui.press({ key: 'cancel' })
   await until(clock, () => result !== undefined)
   await call
-  expect(JSON.stringify(result)).toContain('negado no cartão')
+  expect(JSON.stringify(result)).toContain('denied on the card')
 })
 
-for (const choice of ['permitir', 'cancelar'] as const) {
-  test(`a write in a repo outside the session holds on the card until ${choice}`, { options: { abaDaSessao: 'off', abertura: 'cartão' }, timeoutMs: 30_000 }, async ($, on) => {
+for (const choice of ['allow', 'cancel'] as const) {
+  test(`a write in a repo outside the session holds on the card until ${choice}`, { options: { sessionTab: 'off', opening: 'card' }, timeoutMs: 30_000 }, async ($, on) => {
     const opens: any[] = []
     const closes: string[] = []
     const ran: string[][] = []
     const clock = world(on, ran, opens)
-    on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/projeto' }))
+    on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/project' }))
     on('ui.close', (_$: any, e: any) => {
       closes.push(e.id)
       return { value: undefined }
     })
     on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
     await clock.settle()
     let result: any
     const call = $.tool.call({ tool: 'Write', file_path: NEW_FILE, content: 'x' } as any).then(r => (result = r))
@@ -1756,14 +1756,14 @@ for (const choice of ['permitir', 'cancelar'] as const) {
     expect(opens.find(o => o.id === CARD)?.focus).toBe(true)
     const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: CARD, props })
     const drawn = JSON.stringify(await ui.drawn())
-    expect(drawn).toContain('C:/Users/user/Documents/Code/outro')
+    expect(drawn).toContain('C:/Users/user/Documents/Code/other')
     expect(drawn).toContain('Write')
     await ui.press({ key: choice })
     await until(clock, () => result !== undefined)
     await call
     expect(closes).toContain(CARD)
     const tab = paneId(`win:${WIN_ROOT}`)
-    if (choice === 'permitir') {
+    if (choice === 'allow') {
       expect(JSON.stringify(result)).toContain('ok')
       expect(opens.some(o => o.id === tab)).toBe(true)
       // The tab must not keep the keys, or the next card's focus is refused and it waits behind it unseen.
@@ -1774,49 +1774,49 @@ for (const choice of ['permitir', 'cancelar'] as const) {
       await clock.settle()
       expect(opens.filter(o => o.id === CARD).length).toBe(before)
     } else {
-      expect(JSON.stringify(result)).toContain(`trail: acesso a ${WIN_ROOT} negado no cartão`)
+      expect(JSON.stringify(result)).toContain(`trail: access to ${WIN_ROOT} denied on the card`)
       expect(opens.some(o => o.id === tab)).toBe(false)
     }
   })
 }
 
-test('a card left behind another tab is drawn above the prompt too', { options: { abaDaSessao: 'off', abertura: 'cartão' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a card left behind another tab is drawn above the prompt too', { options: { sessionTab: 'off', opening: 'card' }, timeoutMs: 30_000 }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens)
-  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/projeto' }))
+  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/project' }))
   on('ui.close', () => ({ value: undefined }))
   on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
   on('ui.render', () => ({ type: 'Box', props: {}, children: [] }) as any)
-  git.front = 'outra-aba'
+  git.front = 'other-tab'
   try {
-    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+    await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
     await clock.settle()
     let result: any
     const call = $.tool.call({ tool: 'Write', file_path: NEW_FILE, content: 'x' } as any).then(r => (result = r))
     await until(clock, () => opens.some(o => o.id === CARD))
     await until(clock, () => false)
     const band = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'AbovePrompt', props: {} as any })
-    expect(JSON.stringify(await band.drawn())).toContain('C:/Users/user/Documents/Code/outro')
-    await band.press({ key: 'cancelar' })
+    expect(JSON.stringify(await band.drawn())).toContain('C:/Users/user/Documents/Code/other')
+    await band.press({ key: 'cancel' })
     await until(clock, () => result !== undefined)
     await call
-    expect(JSON.stringify(result)).toContain('negado no cartão')
+    expect(JSON.stringify(result)).toContain('denied on the card')
   } finally {
     git.front = ''
   }
 })
 
 for (const [isFullscreen, columns, card] of [[true, 107, true], [false, 200, false]] as const) {
-  test(`terminal ${isFullscreen ? 'fullscreen' : 'main screen'} at ${columns} columns ${card ? 'shows' : 'shows no'} card`, { options: { abaDaSessao: 'off', abertura: 'cartão' }, timeoutMs: 30_000 }, async ($, on) => {
+  test(`terminal ${isFullscreen ? 'fullscreen' : 'main screen'} at ${columns} columns ${card ? 'shows' : 'shows no'} card`, { options: { sessionTab: 'off', opening: 'card' }, timeoutMs: 30_000 }, async ($, on) => {
     const opens: any[] = []
     git.surface = 'terminal'
     try {
       const clock = world(on, [], opens)
-      on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/projeto' }))
+      on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/project' }))
       on('ui.close', () => ({ value: undefined }))
       on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
       on('ui.render', () => ({ type: 'Box', props: {}, children: [] }) as any)
-      await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'terminal', isInteractive: true })
+      await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'terminal', isInteractive: true })
       await clock.settle()
       // The chat column the terminal reports once the session's own tab docks beside it.
       const seen = await $.ui.mount({ plugin: 'trail', surface: 'terminal', component: 'AbovePrompt', props: {} as any, viewport: { columns, rows: 50, isFullscreen } as any })
@@ -1827,7 +1827,7 @@ for (const [isFullscreen, columns, card] of [[true, 107, true], [false, 200, fal
       expect(opens.some(o => o.id === CARD)).toBe(card)
       if (card) {
         const ui = await $.ui.mount({ plugin: 'trail', surface: 'terminal', component: 'Pane', requestId: CARD, props })
-        await ui.press({ key: 'cancelar' })
+        await ui.press({ key: 'cancel' })
       }
       await until(clock, () => result !== undefined)
       await call
@@ -1837,29 +1837,29 @@ for (const [isFullscreen, columns, card] of [[true, 107, true], [false, 200, fal
   })
 }
 
-test('a write outside any git repo, or inside the session, shows no card', { options: { abaDaSessao: 'off', abertura: 'cartão' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a write outside any git repo, or inside the session, shows no card', { options: { sessionTab: 'off', opening: 'card' }, timeoutMs: 30_000 }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens, true)
-  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/projeto' }))
+  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/project' }))
   on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
   let result: any
   const call = $.tool.call({ tool: 'Write', file_path: 'C:\\Users\\user\\Downloads\\a.txt', content: 'x' } as any).then(r => (result = r))
   await until(clock, () => result !== undefined)
   await call
-  await $.tool.call({ tool: 'Write', file_path: 'C:\\Users\\user\\Documents\\Code\\projeto\\a.md', content: 'x' } as any)
+  await $.tool.call({ tool: 'Write', file_path: 'C:\\Users\\user\\Documents\\Code\\project\\a.md', content: 'x' } as any)
   expect(JSON.stringify(result)).toContain('ok')
   expect(opens.length).toBe(0)
 })
 
-test('"Não pedir de novo" opens the tab with no card until /trail esquecer', { options: { abaDaSessao: 'off', abertura: 'cartão' }, timeoutMs: 30_000 }, async ($, on) => {
+test('"Don\'t ask again" opens the tab with no card until /trail forget', { options: { sessionTab: 'off', opening: 'card' }, timeoutMs: 30_000 }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens)
-  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/projeto' }))
+  on('session.root', () => ({ value: 'C:/Users/user/Documents/Code/project' }))
   on('ui.close', () => ({ value: undefined }))
   on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const cards = () => opens.filter(o => o.id === CARD).length
   const write = async () => {
@@ -1872,28 +1872,28 @@ test('"Não pedir de novo" opens the tab with no card until /trail esquecer', { 
   const first = await write()
   expect(cards()).toBe(1)
   const ui = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: CARD, props })
-  await ui.press({ key: 'sempre' })
+  await ui.press({ key: 'always' })
   await ui.unmount()
   await until(clock, first.done)
   await first.call
   const tab = paneId(`win:${WIN_ROOT}`)
   const drawnTab = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: tab, props })
-  expect(JSON.stringify(await drawnTab.drawn())).toContain('C:\\\\Users\\\\user\\\\Documents\\\\Code\\\\outro')
-  expect(JSON.stringify(await $.command.run(abrir('')))).toContain('não pedir de novo')
+  expect(JSON.stringify(await drawnTab.drawn())).toContain('C:\\\\Users\\\\user\\\\Documents\\\\Code\\\\other')
+  expect(JSON.stringify(await $.command.run(openCmd('')))).toContain("don't ask again")
 
-  await $.command.run({ ...abrir(''), args: `fechar ${WIN_ROOT}` })
+  await $.command.run({ ...openCmd(''), args: `close ${WIN_ROOT}` })
   const again = await write()
   await until(clock, again.done)
   await again.call
   expect(cards()).toBe(1)
   expect(opens.filter(o => o.id === tab).length).toBeGreaterThan(1)
 
-  await $.command.run({ ...abrir(''), args: `fechar ${WIN_ROOT}` })
-  expect(JSON.stringify(await $.command.run({ ...abrir(''), args: 'esquecer outro' }))).toContain('Esqueci')
+  await $.command.run({ ...openCmd(''), args: `close ${WIN_ROOT}` })
+  expect(JSON.stringify(await $.command.run({ ...openCmd(''), args: 'forget other' }))).toContain('Forgot')
   const third = await write()
   expect(cards()).toBe(2)
   const ui3 = await $.ui.mount({ plugin: 'trail', surface: 'desktop', component: 'Pane', requestId: CARD, props })
-  await ui3.press({ key: 'cancelar' })
+  await ui3.press({ key: 'cancel' })
   await until(clock, third.done)
   await third.call
 })
@@ -1913,10 +1913,10 @@ function clientOf(node: any): any {
   return null
 }
 
-test('the moderno replay of an Edit draws no row with an empty id under the file', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the modern replay of an Edit draws no row with an empty id under the file', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
-  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'dois', new_string: 'alfa\nbeta\ngama\ndelta' } as any))
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'alpha\nbeta\ngama\ndelta' } as any))
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.advance(10_000)
   await ui.press({ key: 'replay-last' })
@@ -1964,25 +1964,25 @@ test('live: a Write of a new file plays the green ramp and the + icon once its r
     const { clock, gate, ui } = await litWorld($, on)
     const ramp = RAMPS.green!
     await $.prompt.submit({ text: 'x' } as any)
-    const call = $.tool.call({ tool: 'Write', file_path: atWsl('novo.md'), content: 'a\nb\nc' } as any)
+    const call = $.tool.call({ tool: 'Write', file_path: atWsl('new.md'), content: 'a\nb\nc' } as any)
     await clock.advance(50)
-    DIRS[WSL_ROOT] = [...root, ['novo.md', 'file']]
-    git.wslStatus = `${WSL_STATUS}?? novo.md\0`
+    DIRS[WSL_ROOT] = [...root, ['new.md', 'file']]
+    git.wslStatus = `${WSL_STATUS}?? new.md\0`
     gate.release()
     await call
     const tones = new Set<string>()
     let plus = false
     for (let i = 0; i < 40; i++) {
       await clock.advance(TICK)
-      const row = rowOf(await specs(ui), 'novo.md')
-      if (nameSeg(row, 'novo.md')?.c) tones.add(nameSeg(row, 'novo.md').c)
-      if (glyphSeg(row, 'novo.md')?.t === '+ ') plus = true
+      const row = rowOf(await specs(ui), 'new.md')
+      if (nameSeg(row, 'new.md')?.c) tones.add(nameSeg(row, 'new.md').c)
+      if (glyphSeg(row, 'new.md')?.t === '+ ') plus = true
     }
     expect([ramp[0], ramp[1], ramp[2], ramp[3]].every(c => tones.has(c!))).toBe(true)
     expect(plus).toBe(true)
-    const row = rowOf(await specs(ui), 'novo.md')
-    expect(glyphSeg(row, 'novo.md')).toEqual({ t: '+ ', c: ramp[2] })
-    expect(nameSeg(row, 'novo.md').c).toBe(ramp[1])
+    const row = rowOf(await specs(ui), 'new.md')
+    expect(glyphSeg(row, 'new.md')).toEqual({ t: '+ ', c: ramp[2] })
+    expect(nameSeg(row, 'new.md').c).toBe(ramp[1])
   } finally {
     DIRS[WSL_ROOT] = root
     git.wslStatus = WSL_STATUS
@@ -1993,16 +1993,16 @@ test('live: a Write of a new file plays the green ramp and the + icon once its r
 // and each file that came plays live as born, one step each, in order, as the same files spelled out do.
 test('live: a shell loop writing through a variable plays each new file as born, one step each, in order', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
-  const lote = `${WSL_ROOT}/lote`
-  const names = ['novo-01.txt', 'novo-02.txt', 'novo-03.txt']
+  const batch = `${WSL_ROOT}/batch`
+  const names = ['new-01.txt', 'new-02.txt', 'new-03.txt']
   try {
     const { clock, gate, ui } = await litWorld($, on)
     const ramp = RAMPS.green!
     await $.prompt.submit({ text: 'x' } as any)
-    const call = $.tool.call({ tool: 'Bash', command: `cd ${WSL_ROOT} && mkdir -p lote && for i in 01 02 03; do echo "arquivo $i" > lote/novo-$i.txt; done` } as any)
+    const call = $.tool.call({ tool: 'Bash', command: `cd ${WSL_ROOT} && mkdir -p batch && for i in 01 02 03; do echo "file $i" > batch/new-$i.txt; done` } as any)
     await clock.advance(50)
-    DIRS[WSL_ROOT] = [...root, ['lote', 'dir']]
-    DIRS[lote] = names.map(name => [name, 'file'])
+    DIRS[WSL_ROOT] = [...root, ['batch', 'dir']]
+    DIRS[batch] = names.map(name => [name, 'file'])
     gate.release()
     await call
     await clock.settle()
@@ -2018,7 +2018,7 @@ test('live: a shell loop writing through a variable plays each new file as born,
     }
   } finally {
     DIRS[WSL_ROOT] = root
-    delete DIRS[lote]
+    delete DIRS[batch]
   }
 })
 
@@ -2078,19 +2078,19 @@ test(`live: an rm of three files ${how} plays three gone steps, each row kept as
 
 // Rodada 7, passo 6: Git Bash names a Windows repo as /c/..., and a cd before a relative path; the tab behind
 // comes to the front before the light, and the command is scanned (git status runs) as one naming C:/... is.
-test('a Git Bash cd /c/... && rm in the tab behind brings it to the front and scans it', { options: { abaDaSessao: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+test('a Git Bash cd /c/... && rm in the tab behind brings it to the front and scans it', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
   const opens: any[] = []
   const ran: string[][] = []
   const clock = world(on, ran, opens)
   on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
-  await $.command.run(abrir(WIN_ROOT))
-  await $.command.run(abrir(WSL_ROOT))
+  await $.command.run(openCmd(WIN_ROOT))
+  await $.command.run(openCmd(WSL_ROOT))
   await clock.settle()
   const before = opens.length
   const ranBefore = ran.length
-  await $.tool.call({ tool: 'Bash', command: 'cd /c/Users/user/Documents/Code/outro && rm win-only.md && ls' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'cd /c/Users/user/Documents/Code/other && rm win-only.md && ls' } as any)
   await clock.settle()
   expect(opens.slice(before).map(o => o.id)).toEqual([paneId(`win:${WIN_ROOT}`)])
   expect(opens.slice(before).some(o => o.focus)).toBe(false)
@@ -2098,46 +2098,46 @@ test('a Git Bash cd /c/... && rm in the tab behind brings it to the front and sc
 })
 
 // One command naming two repos raises one tab: the one with more paths in it.
-test('a command touching two repos brings only the one with more paths to the front', { options: { abaDaSessao: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+test('a command touching two repos brings only the one with more paths to the front', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens)
   on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
-  await $.command.run(abrir(WSL_ROOT))
-  await $.command.run(abrir(WIN_ROOT))
+  await $.command.run(openCmd(WSL_ROOT))
+  await $.command.run(openCmd(WIN_ROOT))
   await clock.settle()
   const before = opens.length
-  await $.tool.call({ tool: 'Bash', command: 'touch C:/Users/user/Documents/Code/outro/a.md //wsl.localhost/Ubuntu/home/user/meu-repo/x.md //wsl.localhost/Ubuntu/home/user/meu-repo/y.md' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'touch C:/Users/user/Documents/Code/other/a.md //wsl.localhost/Ubuntu/home/user/my-repo/x.md //wsl.localhost/Ubuntu/home/user/my-repo/y.md' } as any)
   await clock.settle()
-  expect(opens.slice(before).map(o => o.id)).toEqual([paneId('wsl:/home/user/meu-repo')])
+  expect(opens.slice(before).map(o => o.id)).toEqual([paneId('wsl:/home/user/my-repo')])
 })
 
 
 // A relative path with no cd lands in the session's folder: a session started in the repo sees its own rm.
-test('a relative rm in the session folder brings that repo to the front and scans it', { options: { abaDaSessao: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+test('a relative rm in the session folder brings that repo to the front and scans it', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
   const opens: any[] = []
   const ran: string[][] = []
   const clock = world(on, ran, opens)
   git.cwd = WIN_ROOT
   on('tool.call', () => ({ result: { text: 'ok', isError: false } }) as any)
-  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/projeto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
   await clock.settle()
-  await $.command.run(abrir(WIN_ROOT))
-  await $.command.run(abrir(WSL_ROOT))
+  await $.command.run(openCmd(WIN_ROOT))
+  await $.command.run(openCmd(WSL_ROOT))
   await clock.settle()
   const before = opens.length
   const ranBefore = ran.length
   await $.tool.call({ tool: 'Bash', command: 'rm win-only.md' } as any)
   await clock.settle()
-  git.cwd = 'C:/Users/user/Documents/Code/projeto'
+  git.cwd = 'C:/Users/user/Documents/Code/project'
   expect(opens.slice(before).map(o => o.id)).toEqual([paneId(`win:${WIN_ROOT}`)])
   expect(ran.slice(ranBefore).some(r => r[0] === 'git' && r.includes('status'))).toBe(true)
 })
 
 
 // Rodada 7, BUG 3: a prompt with no tool leaves the last turn empty; ▷ stays, grey and with nothing to press.
-test('▷ stays grey with no press after a prompt with no tool, and ▷▷ still plays', { options: { abaDaSessao: 'off', animacao: 'clássico' }, timeoutMs: 30_000 }, async ($, on) => {
+test('▷ stays grey with no press after a prompt with no tool, and ▷▷ still plays', { options: { sessionTab: 'off', replayAnimation: 'classic' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   const drawn = async () => JSON.stringify(await ui.drawn())
   await $.prompt.submit({ text: 'primeiro' } as any)
@@ -2145,7 +2145,7 @@ test('▷ stays grey with no press after a prompt with no tool, and ▷▷ still
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.advance(10_000)
   expect(await drawn()).toContain('"replay-last"')
-  await $.prompt.submit({ text: 'só texto' } as any)
+  await $.prompt.submit({ text: 'text only' } as any)
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.settle()
   expect(await drawn()).not.toContain('"replay-last"')
@@ -2157,26 +2157,26 @@ test('▷ stays grey with no press after a prompt with no tool, and ▷▷ still
 // it still draws its row (a plain one, out of clicks), and the step that removed it plays it out as a ghost.
 test('▷▷ after a loop made files and an rm in a later prompt removed them shows them made, then gone', { options: LIVE_OPTIONS, timeoutMs: 60_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
-  const lote = `${WSL_ROOT}/lote`
-  const names = ['novo-01.txt', 'novo-02.txt', 'novo-03.txt']
+  const batch = `${WSL_ROOT}/batch`
+  const names = ['new-01.txt', 'new-02.txt', 'new-03.txt']
   try {
     const { clock, gate, ui } = await litWorld($, on)
     const drawn = async () => JSON.stringify(await ui.drawn())
     // Twice: the second time the files come back, the first rm is already behind them in the trail.
     for (const round of [1, 2]) {
       await $.prompt.submit({ text: `x${round}` } as any)
-      const make = $.tool.call({ tool: 'Bash', command: `cd ${WSL_ROOT} && mkdir -p lote && for i in 01 02 03; do echo "arquivo $i" > lote/novo-$i.txt; done` } as any)
+      const make = $.tool.call({ tool: 'Bash', command: `cd ${WSL_ROOT} && mkdir -p batch && for i in 01 02 03; do echo "file $i" > batch/new-$i.txt; done` } as any)
       await clock.advance(50)
-      DIRS[WSL_ROOT] = [...root, ['lote', 'dir']]
-      DIRS[lote] = names.map(name => [name, 'file'])
+      DIRS[WSL_ROOT] = [...root, ['batch', 'dir']]
+      DIRS[batch] = names.map(name => [name, 'file'])
       gate.release()
       await make
       await $.classic.Stop({ stop_hook_active: false } as any)
       await clock.advance(20_000)
       await $.prompt.submit({ text: `y${round}` } as any)
-      const drop = $.tool.call({ tool: 'Bash', command: `rm ${names.map(name => `${WSL_ROOT}/lote/${name}`).join(' ')}` } as any)
+      const drop = $.tool.call({ tool: 'Bash', command: `rm ${names.map(name => `${WSL_ROOT}/batch/${name}`).join(' ')}` } as any)
       await clock.advance(50)
-      DIRS[lote] = []
+      DIRS[batch] = []
       gate.release()
       await drop
       await $.classic.Stop({ stop_hook_active: false } as any)
@@ -2205,32 +2205,32 @@ test('▷▷ after a loop made files and an rm in a later prompt removed them sh
     for (const step of ['■ 2/4', '■ 4/4']) expect(struck[step]).toEqual([true, true, true])
   } finally {
     DIRS[WSL_ROOT] = root
-    delete DIRS[lote]
+    delete DIRS[batch]
   }
 })
 
 // 0.7.7: the replay of a loop that made files brings each one in as the bar reaches it, not all at the step's start.
 test('▷ after a loop made files brings each row in on its own turn, in order', { options: LIVE_OPTIONS, timeoutMs: 60_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
-  const lote = `${WSL_ROOT}/lote`
-  const names = ['novo-01.txt', 'novo-02.txt', 'novo-03.txt']
-  DIRS[WSL_ROOT] = [...root, ['lote', 'dir']]
-  DIRS[lote] = [['velho.txt', 'file']]
+  const batch = `${WSL_ROOT}/batch`
+  const names = ['new-01.txt', 'new-02.txt', 'new-03.txt']
+  DIRS[WSL_ROOT] = [...root, ['batch', 'dir']]
+  DIRS[batch] = [['old.txt', 'file']]
   try {
     const { clock, gate, read, ui } = await litWorld($, on)
     const drawn = async () => JSON.stringify(await ui.drawn())
-    // An earlier prompt leaves lote open, as in the playground: the step has no folder to open on its way.
+    // An earlier prompt leaves batch open, as in the playground: the step has no folder to open on its way.
     await $.prompt.submit({ text: 'a' } as any)
-    const look = read('lote\\velho.txt')
+    const look = read('batch\\old.txt')
     await clock.advance(50)
     gate.release()
     await look
     await $.classic.Stop({ stop_hook_active: false } as any)
     await clock.advance(20_000)
     await $.prompt.submit({ text: 'x' } as any)
-    const make = $.tool.call({ tool: 'Bash', command: `cd ${WSL_ROOT} && for i in 01 02 03; do echo "arquivo $i" > lote/novo-$i.txt; done` } as any)
+    const make = $.tool.call({ tool: 'Bash', command: `cd ${WSL_ROOT} && for i in 01 02 03; do echo "file $i" > batch/new-$i.txt; done` } as any)
     await clock.advance(50)
-    DIRS[lote] = [...names.map(name => [name, 'file']), ['velho.txt', 'file']]
+    DIRS[batch] = [...names.map(name => [name, 'file']), ['old.txt', 'file']]
     gate.release()
     await make
     await $.classic.Stop({ stop_hook_active: false } as any)
@@ -2251,11 +2251,11 @@ test('▷ after a loop made files brings each row in on its own turn, in order',
     expect(first[2]! - first[1]!).toBeGreaterThan(10)
   } finally {
     DIRS[WSL_ROOT] = root
-    delete DIRS[lote]
+    delete DIRS[batch]
   }
 })
 
-// Fase 9: a folder past `pastaGrande` (200) opens folded around what matters, with `… N arquivos` blocks.
+// Phase 9: a folder past `bigFolder` (200) opens folded around what matters, with `… N files` blocks.
 const BIG = Array.from({ length: 1533 }, (_, i) => [`usp_${String(i).padStart(4, '0')}.sql`, 'file'] as [string, 'file'])
 async function bigWorld($: any, on: any) {
   const w = await litWorld($, on)
@@ -2269,7 +2269,7 @@ const dbId = `${WSL_ROOT}/database`
 const foldId = (first: string) => `${dbId}\u0000${dbId}/${first}`
 const names = (rows: any[]) => rows.map((r: any) => r.id.slice(r.id.lastIndexOf('/') + 1))
 
-test('a read in a folder of 1533 files draws the file, 3 neighbours each side, two blocks and the total', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a read in a folder of 1533 files draws the file, 3 neighbours each side, two blocks and the total', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[dbId]!
   DIRS[dbId] = BIG
   try {
@@ -2279,14 +2279,14 @@ test('a read in a folder of 1533 files draws the file, 3 neighbours each side, t
     expect(names(under.filter((r: any) => !r.id.includes('\u0000')))).toEqual(['usp_0763.sql', 'usp_0764.sql', 'usp_0765.sql', 'usp_0766.sql', 'usp_0767.sql', 'usp_0768.sql', 'usp_0769.sql'])
     const blocks = under.filter((r: any) => r.id.includes('\u0000'))
     expect(blocks.map((r: any) => r.id)).toEqual([foldId('usp_0000.sql'), foldId('usp_0770.sql')])
-    expect(JSON.stringify(blocks[0].left)).toContain('… 763 arquivos')
-    expect(JSON.stringify(rowOf(rows, 'database').left)).toContain('·1.533')
+    expect(JSON.stringify(blocks[0].left)).toContain('… 763 files')
+    expect(JSON.stringify(rowOf(rows, 'database').left)).toContain('·1,533')
   } finally {
     DIRS[dbId] = db
   }
 })
 
-test('a click on a block unfolds that stretch and leaves the other block', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a click on a block unfolds that stretch and leaves the other block', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[dbId]!
   DIRS[dbId] = BIG
   try {
@@ -2310,7 +2310,7 @@ test('a click on a block unfolds that stretch and leaves the other block', { opt
   }
 })
 
-test('a click on the total shows the whole folder, and closing it folds it again', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('a click on the total shows the whole folder, and closing it folds it again', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[dbId]!
   DIRS[dbId] = BIG
   try {
@@ -2324,7 +2324,7 @@ test('a click on the total shows the whole folder, and closing it folds it again
     expect(rowOf(rows, 'usp_1532.sql')).not.toBe(undefined)
     await ui.key({ key: 'home' })
     await clock.settle()
-    expect(JSON.stringify(await ui.drawn())).toContain('·1.533')
+    expect(JSON.stringify(await ui.drawn())).toContain('·1,533')
     await ui.post({ press: dbId })
     await clock.settle()
     await clock.advance(1_000)
@@ -2338,7 +2338,7 @@ test('a click on the total shows the whole folder, and closing it folds it again
   }
 })
 
-test('the ± filter shows the changed file of a big folder with no block', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the ± filter shows the changed file of a big folder with no block', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[dbId]!
   DIRS[dbId] = BIG
   git.wslStatus = '## main...origin/main\0 M wsl-only.md\0 M database/usp_0100.sql\0'
@@ -2357,7 +2357,7 @@ test('the ± filter shows the changed file of a big folder with no block', { opt
   }
 })
 
-test('the replay of a read in a big folder reveals the 7 rows and the blocks, not the 1533 files', { options: { abaDaSessao: 'off', animacao: 'moderno' }, timeoutMs: 30_000 }, async ($, on) => {
+test('the replay of a read in a big folder reveals the 7 rows and the blocks, not the 1533 files', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[dbId]!
   DIRS[dbId] = BIG
   try {

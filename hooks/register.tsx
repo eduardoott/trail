@@ -48,7 +48,7 @@ const SESSION_TAB_DONE = { plugin: 'trail', key: 'sessionTabDone' } as const
 const START_CWD = { plugin: 'trail', key: 'startCwd' } as const
 const QUIET = { plugin: 'trail', key: 'quiet' } as const
 const REMEMBERED = 'remembered'
-const CARD_ID = 'trail-cartao'
+const CARD_ID = 'trail-card'
 const HOLD_LIMIT_MS = 10 * 60 * 1000
 const EARLY_MS = 1_200
 const NO_ROOT_TTL_MS = 60_000
@@ -97,20 +97,20 @@ const followClaude = true
 let sizeDefault = false
 let tabFollows = true
 let sessionTab = true
-// leitura (default sim): a Read, Grep or shell reader opens the tab and counts for the card, like a write.
+// reads (default yes): a Read, Grep or shell reader opens the tab and counts for the card, like a write.
 let readsToo = true
 let diagnose = false
-// Fase 9: a folder with more direct children than this opens folded (0 turns the fold off).
-let pastaGrande = 200
-// Replay skin: clássico is the one-light-per-command player kept as it was; moderno plays each step as frames.
-let animacao: 'clássico' | 'moderno' = 'moderno'
-// aoVivo (moderno only): animado plays each live light as the short replay of its step; instantâneo lights at once, as before.
-let aoVivo: 'animado' | 'instantâneo' = 'animado'
-const liveOn = () => animacao === 'moderno' && aoVivo === 'animado'
+// Phase 9: a folder with more direct children than this opens folded (0 turns the fold off).
+let bigFolder = 200
+// Replay skin: classic is the one-light-per-command player kept as it was; modern plays each step as frames.
+let replayAnimation: 'classic' | 'modern' = 'modern'
+// liveAnimation (modern only): animated plays each live light as the short replay of its step; instant lights at once, as before.
+let liveAnimation: 'animated' | 'instant' = 'animated'
+const liveOn = () => replayAnimation === 'modern' && liveAnimation === 'animated'
 // The header button cycles the replay's speed: it scales the whole tick (2x, a tick of 25 ms; 0.5x, of 100 ms).
 const SPEEDS = [1, 2, 0.5, 0.25] as const
 let speed: number = 1
-// moderno: the icon of each kind of step, in the place of the row's glyph while it plays.
+// modern: the icon of each kind of step, in the place of the row's glyph while it plays.
 const ICONS: Record<Kind, { nerd: string; plain: string }> = {
   read: { nerd: '\u{f002}', plain: '⌕' },
   edit: { nerd: '\u{f040}', plain: '✎' },
@@ -118,8 +118,8 @@ const ICONS: Record<Kind, { nerd: string; plain: string }> = {
   born: { nerd: '\u{f067}', plain: '+' },
   gone: { nerd: '\u{f00d}', plain: '×' },
 }
-// sozinha: an edit in a git repo opens its tab; cartão: the card asks first, and a closed tab stays closed.
-let abertura: 'sozinha' | 'cartão' = 'sozinha'
+// auto: an edit in a git repo opens its tab; card: the card asks first, and a closed tab stays closed.
+let opening: 'auto' | 'card' = 'auto'
 
 let themePoll: Timer | null = null
 let themeMtime: number | null = null
@@ -147,7 +147,7 @@ const REPLAY_STEP_MS = 2000
 const views = new Map<string, { columns: number; isFullscreen?: boolean }>()
 const roots = new Map<string, { repo: Repo | null; at: number }>()
 
-// What the moderno replay and the live light draw from: the frames of the step playing and where each row is in them.
+// What the modern replay and the live light draw from: the frames of the step playing and where each row is in them.
 type Player = {
   // The step playing (its rows only), its frames and the next one to apply.
   step: Step | null
@@ -180,7 +180,7 @@ type Player = {
   jump?: boolean
 }
 
-// clássico uses index, total, token and timer only; moderno also plays each step's frames.
+// classic uses index, total, token and timer only; modern also plays each step's frames.
 type Replay = Player & {
   index: number
   total: number
@@ -189,7 +189,7 @@ type Replay = Player & {
   modern: boolean
 }
 
-// aoVivo animado: each light waits its turn in queue, one file a step, and plays a short plan of it (LIVE, CATCH
+// liveAnimation animated: each light waits its turn in queue, one file a step, and plays a short plan of it (LIVE, CATCH
 // or RUSH as the queue runs behind). step is the queued step itself, so a second light of the same command rides along with it.
 type Live = Player & {
   queue: Step[]
@@ -766,7 +766,7 @@ function touchedOf(s: Instance, t: FileTree): Set<string> {
 }
 
 function foldCtx(s: Instance, t: FileTree): FoldCtx {
-  return { touched: touchedOf(s, t), limit: pastaGrande }
+  return { touched: touchedOf(s, t), limit: bigFolder }
 }
 
 // The folder's direct children the pane can show, as visibleRows counts them for the fold.
@@ -777,7 +777,7 @@ function kidCounts(t: FileTree): Map<string, number> {
 }
 
 const FOLD_KEY = '\u0000'
-const ptBR = new Intl.NumberFormat('pt-BR')
+const enUS = new Intl.NumberFormat('en-US')
 
 const DARK = { flash: [], flashDim: [], flashOn: false, flashTones: {} } satisfies Partial<FileTree>
 
@@ -828,12 +828,12 @@ async function flash($: EngineInterface, s: Instance, tones: Record<string, stri
   const shut = [...new Set(unique.filter(id => id !== BRANCH_ROW).flatMap(id => ancestorsOf(id, before.root)).filter(dir => !open.has(dir)))]
   s.trail = record(s.trail, { epoch, turn, tones: files ? kept : tones, ...(files ? { files } : {}), ...(shut.length ? { shut } : {}), ...(names?.length ? { names } : {}) })
   void $.state.set({ ...TRAIL, id: s.id }, s.trail)
-  // aoVivo animado plays a gone file too, as the replay does: its row stays, a ghost once the tree lost it, until its
+  // liveAnimation animated plays a gone file too, as the replay does: its row stays, a ghost once the tree lost it, until its
   // step played it out. The instant light has no row to light.
   const gone = liveOn() && files ? Object.keys(files).filter(p => files[p]?.gone && !(p in tones) && inside(before.root, p)) : []
   if (epoch !== lightEpoch || unique.length + gone.length === 0) return
   await stopReplay($, s)
-  // aoVivo animado: the light waits its turn and plays on the pane's clock; the call never waits for it.
+  // liveAnimation animated: the light waits its turn and plays on the pane's clock; the call never waits for it.
   if (liveOn()) return queueLive($, s, { ...tones, ...Object.fromEntries(gone.map(p => [p, 'orange'])) }, epoch, files, names)
   const mine = ++s.generation
   s.blink?.cancel()
@@ -920,7 +920,7 @@ async function play($: EngineInterface, s: Instance, scope: 'last' | 'all'): Pro
   s.blink = null
   forgetLit(s)
   const token = ++replayToken
-  const modern = animacao === 'moderno'
+  const modern = replayAnimation === 'modern'
   s.replay = { index: 0, total: steps.length, token, timer: null, modern, step: null, frames: [], at: 0, bar: null, hidden: new Set(), kids: {}, shade: {}, ramps: {}, names: {}, icon: null, marks: {}, counts: {}, settled: {}, ghosts: [] }
   await patch($, s, () => DARK)
   if (modern) await playModern($, s, steps, token)
@@ -978,7 +978,7 @@ function follow(s: Instance, t: FileTree, ids: string[], row: string): number {
   return Math.max(0, Math.min(top, max))
 }
 
-// moderno: each step is a list of frames (replay.ts plan), played by playFrames.
+// modern: each step is a list of frames (replay.ts plan), played by playFrames.
 async function playModern($: EngineInterface, s: Instance, steps: Step[], token: number): Promise<void> {
   const r = s.replay
   if (!r || r.token !== token) return
@@ -1070,7 +1070,7 @@ async function playClassic($: EngineInterface, s: Instance, steps: Step[], token
   r.timer = $.clock.after(wait, () => void playClassic($, s, steps, token))
 }
 
-// Serves both players. moderno also hands the window back: the render draws natively again on the desktop.
+// Serves both players. modern also hands the window back: the render draws natively again on the desktop.
 // Its bar, icon, tones and hidden rows live on the replay, so they all go in this one draw.
 async function stopReplay($: EngineInterface, s: Instance): Promise<void> {
   const r = s.replay
@@ -1155,7 +1155,7 @@ function newLive(): Live {
 // The queue is counted in lights, not in commands: a grep that reads ten files is ten (a step holds one, or the branch).
 const lightsOf = (step: Step) => Math.max(1, Object.keys(step.tones).filter(p => p !== BRANCH_ROW).length)
 
-// flash's side when aoVivo is animado. A row this command already has on its way rides along with it (tone and
+// flash's side when liveAnimation is animated. A row this command already has on its way rides along with it (tone and
 // counts); one it already played lights again at once, as before; the rest wait their turn as a step of their own.
 // names: the command's labels, kept on the step as record keeps them (the early light's and the result's, once each).
 async function queueLive($: EngineInterface, s: Instance, tones: Record<string, string>, epoch: number, files?: Record<string, StepFile>, names?: string[]): Promise<void> {
@@ -1794,7 +1794,7 @@ async function toggleFlat($: EngineInterface, s: Instance, dir: string): Promise
 // A big folder open and not flat, with no filter choosing its rows: the one `right` shows whole.
 function foldedDir(t: FileTree, n: FileNode): boolean {
   if (n.kind !== 'dir' || !t.expanded.includes(n.id) || t.flat.includes(n.id) || t.query.trim() || t.onlyChanged) return false
-  return isBig(t.nodes.filter(k => k.parent === n.id && (t.showHidden || !k.hidden)), pastaGrande)
+  return isBig(t.nodes.filter(k => k.parent === n.id && (t.showHidden || !k.hidden)), bigFolder)
 }
 
 // The tab never changes root, so opening a folder only expands it.
@@ -2063,14 +2063,14 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   const ignored = new Set(t.ignored)
   const untracked = new Set(t.untrackedDirs)
   const width = Math.max(24, props.bodyColumns)
-  // moderno's replay draws from its own fields; the tree's flash stays dark while it plays.
+  // modern's replay draws from its own fields; the tree's flash stays dark while it plays.
   // The live light draws from its own the same way, one player at a time: each one stops the other.
   const rp: Player | null = s.live ?? (s.replay?.modern ? s.replay : null)
   // A file the replayed step removed: a struck row among its old siblings while the step plays.
   const { rows, ghosts, phantoms } = paneRows(s, t, s.live ?? s.replay)
   const counts = kidCounts(t)
   // Every row rides in the Client's props, bounded at 100,000 characters: past a few hundred the pane draws nothing, so a long list scrolls in a window like the terminal's.
-  // A moderno replay moves the window with its bar, so on the desktop it draws in its own window until it stops.
+  // A modern replay moves the window with its bar, so on the desktop it draws in its own window until it stops.
   // The live light only while its frames play: idle, its bar stays parked on its row and the desktop scrolls natively.
   const parked = s.live !== null && !s.live.step && !s.live.queue.length
   if (rows.length > NATIVE_ROWS || (rp && !parked)) s.nativeScroll = false
@@ -2113,7 +2113,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   // The whole path, as the person would type it: C:\... on Windows, the Linux path in WSL.
   const header = s.repo.kind === 'wsl' ? `WSL ${s.repo.linux}` : s.repo.root.replace(/\//g, '\\')
 
-  // moderno: tone k of the row's ramp while it lights up or down, tone 2 once it settled.
+  // modern: tone k of the row's ramp while it lights up or down, tone 2 once it settled.
   const rampFor = (id: string) => RAMPS[rp?.ramps[id] ?? ''] ?? RAMPS.teal!
   // The live light's rows keep their ramp for as long as their light is on: tone 2 lit, DIM_TONE on a folder on the way.
   const liveTone = (id: string): string | undefined => {
@@ -2151,7 +2151,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   }
   // A row the live light is playing draws its frames, even where an older light still shines on it.
   const playing = (id: string) => Boolean(rp && (rp.shade[id] || iconAt(id)))
-  // Fase 13: the labels of the step's command as chips after the name, for as long as moderno lights the row (its
+  // Phase 13: the labels of the step's command as chips after the name, for as long as modern lights the row (its
   // tones up, its icon, its still mark, its settled tone, or the live light on it). The chip's background follows
   // the name's tone: tone k while it shades, the icon's 5 4 3 4 while it plays, tone 1 once settled, tone 2 lit.
   // Dark text from tone 3 up. Rounded caps ◖ ◗ in the tone, none in glyphs plain; 4 labels at most, then +N.
@@ -2175,7 +2175,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     if (labels.length > 4) out.push({ t: ` +${labels.length - 4}`, c: theme.muted })
     return clean(out)
   }
-  // While moderno plays every row gets a gutter column, as the mock's border: the bar's ▌ sits there,
+  // While modern plays every row gets a gutter column, as the mock's border: the bar's ▌ sits there,
   // in the row's tone, muted while it is unlit, and no caret is covered.
   const barBg = faint(theme.selection)
   const barred = (spec: RowSpec, id: string): RowSpec => {
@@ -2192,7 +2192,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
       return barred({ id: '', left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, iconOf(n.id) ?? { t: '· ', c }, { t: n.name, c, s: true }, ...chipsOf(n.id)], right: [] }, n.id)
     }
     // A hidden stretch of a folded folder: its count at the children's glyph column, nothing else.
-    if (n.kind === 'fold') return barred({ id: n.id, left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, { t: `… ${ptBR.format(r.count ?? 0)} arquivos`, c: theme.muted }], right: [] }, n.id)
+    if (n.kind === 'fold') return barred({ id: n.id, left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, { t: `… ${enUS.format(r.count ?? 0)} files`, c: theme.muted }], right: [] }, n.id)
     // A file the replay made that the tree lost since: a plain row, out of clicks as a ghost.
     if (phantoms.has(n.id)) {
       const c = tint(n.id) ?? theme.fg
@@ -2234,7 +2234,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
     const countsText = dirCounts.map(c => c.t).join('')
     // A big folder's header carries its count after the name: the click target of flat, accent while it is flat.
-    const total = n.kind === 'dir' && isBig({ length: counts.get(n.id) ?? 0 }, pastaGrande) ? `·${ptBR.format(counts.get(n.id) ?? 0)}` : ''
+    const total = n.kind === 'dir' && isBig({ length: counts.get(n.id) ?? 0 }, bigFolder) ? `·${enUS.format(counts.get(n.id) ?? 0)}` : ''
     const totalSeg: Seg[] = total ? [{ t: total, c: t.flat.includes(n.id) ? theme.accent : theme.muted, flat: n.id }] : []
     const cols = Math.max(4, width - r.depth * 2 - 6 - (rp ? 1 : 0) - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length - total.length)
     const name = n.name.length > cols ? n.name.slice(0, cols - 1) + '…' : n.name
@@ -2281,7 +2281,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const b = t.branch
     const isFlash = bright.has(BRANCH_ROW)
     const tone = t.flashTones[BRANCH_ROW] ?? 'teal'
-    // moderno: the commit's step tones the branch as it does a file, and its command's chips follow the head.
+    // modern: the commit's step tones the branch as it does a file, and its command's chips follow the head.
     const tinted = tint(BRANCH_ROW)
     const branchChips = chipsOf(BRANCH_ROW)
     return (
@@ -2347,7 +2347,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
         </Text>
         <Box flexGrow={1} />
         <Box flexDirection="row" gap={2}>
-          {animacao === 'moderno' && (
+          {replayAnimation === 'modern' && (
             <Button
               key="speed"
               plain
@@ -2390,7 +2390,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
             key="changed"
             plain
             dimColor={!t.onlyChanged}
-            label={t.onlyChanged ? '± só modificados' : '±'}
+            label={t.onlyChanged ? '± changed only' : '±'}
             onPress={() =>
               void (async () => {
                 const on = !(await get($, s)).onlyChanged
@@ -2529,7 +2529,7 @@ function fileOf(e: object): string {
   return ''
 }
 
-const USAGE = 'uso: /trail [abrir <pasta> | fechar <raiz> | esquecer <raiz | tudo>]'
+const USAGE = 'usage: /trail [open <folder> | close <root> | forget <root | all>]'
 
 // A plain reopen is tried first so the prompt keeps the keyboard; focus is the fallback.
 async function bringToFront($: EngineInterface, s: Instance): Promise<void> {
@@ -2537,16 +2537,16 @@ async function bringToFront($: EngineInterface, s: Instance): Promise<void> {
   const shown = async () => (await $.ui.panes()).find(p => p.id === s.id)
   const before = await shown()
   if (!before || before.isShown) {
-    diag($, `trail: ${s.id} ${before ? 'já na frente' : 'fora de ui.panes'}`)
+    diag($, `trail: ${s.id} ${before ? 'already in front' : 'not in ui.panes'}`)
     return
   }
   await openPane($, s).catch(() => undefined)
-  if ((await shown())?.isShown) return void diag($, `trail: ${s.id} trocou sem foco`)
+  if ((await shown())?.isShown) return void diag($, `trail: ${s.id} switched without focus`)
   const r = await openPane($, s, true).catch((err: unknown) => ({ isPlaced: false, reason: String(err) }))
-  diag($, `trail: ${s.id} com foco: ${(await shown())?.isShown ? 'trocou' : 'não trocou'} ${JSON.stringify(r)}`)
+  diag($, `trail: ${s.id} with focus: ${(await shown())?.isShown ? 'switched' : 'did not switch'} ${JSON.stringify(r)}`)
 }
 
-// The gray diagnostic line of phase 1, now behind the `diagnostico` option.
+// The gray diagnostic line of phase 1, now behind the `diagnostics` option.
 function diag($: EngineInterface, text: string): void {
   $.ui.log(text, diagnose ? undefined : { to: 'debug' })
 }
@@ -2591,7 +2591,7 @@ async function pause($: EngineInterface): Promise<void> {
     } catch {
       // not installed here
     }
-    if (pauseAt >= PAUSES.length - 1) throw new Error('trail não consegue esperar: node, ping e sleep falharam')
+    if (pauseAt >= PAUSES.length - 1) throw new Error('trail cannot wait: node, ping and sleep all failed')
     pauseAt += 1
   }
 }
@@ -2637,7 +2637,7 @@ async function muted($: EngineInterface): Promise<boolean> {
 }
 
 async function showCard($: EngineInterface, card: Card) {
-  const opened = await $.ui.open({ id: CARD_ID, title: 'Repo externo', focus: true, rows: CARD_ROWS })
+  const opened = await $.ui.open({ id: CARD_ID, title: 'External repo', focus: true, rows: CARD_ROWS })
   // Focus is only a request: a pane the person holds keeps the front, and the card would wait as a tab behind it.
   const pane = opened.isPlaced ? (await $.ui.panes().catch(() => [])).find(p => p.id === CARD_ID) : undefined
   card.where = pane?.isShown ? 'pane' : 'band'
@@ -2647,7 +2647,7 @@ async function showCard($: EngineInterface, card: Card) {
 
 async function ask($: EngineInterface, e: { tool: string }, signal: AbortSignal, t: Target, what: string, folder: string): Promise<{ deny: string } | null> {
   while (held) {
-    if (signal.aborted) return { deny: 'trail: a chamada foi interrompida enquanto outro cartão esperava resposta.' }
+    if (signal.aborted) return { deny: 'trail: the call was interrupted while another card was waiting for an answer.' }
     await pause($)
   }
   const card: Card = { tool: e.tool, what, folder, root: null, title: '', decision: null, where: 'pane' }
@@ -2665,7 +2665,7 @@ async function ask($: EngineInterface, e: { tool: string }, signal: AbortSignal,
     // The tab may have opened while this call waited behind another card.
     if (!repo || instances.has(paneId(repo.key)) || (await quiet($)).some(r => r.key === repo?.key)) return null
     if ((await remembered($)).some(r => r.key === repo?.key)) {
-      card.decision = 'permitir'
+      card.decision = 'allow'
       return null
     }
     card.root = shortPath(repo.root)
@@ -2676,40 +2676,40 @@ async function ask($: EngineInterface, e: { tool: string }, signal: AbortSignal,
     } else $.ui.invalidate('ui.render')
     const startedAt = await $.clock.now()
     while (card.decision === null) {
-      if (signal.aborted) card.decision = 'interrompido'
-      else if ((await $.clock.now()) - startedAt > HOLD_LIMIT_MS) card.decision = 'tempo'
+      if (signal.aborted) card.decision = 'interrupted'
+      else if ((await $.clock.now()) - startedAt > HOLD_LIMIT_MS) card.decision = 'timeout'
       else await pause($)
     }
   } catch {
-    card.decision = 'erro'
+    card.decision = 'error'
   } finally {
     if (shown) await $.ui.close({ id: CARD_ID }).catch(() => undefined)
     if (held === card) held = null
     $.ui.invalidate('ui.render')
   }
   const root = repo ? repo.root : t.path
-  if (repo && (card.decision === 'permitir' || card.decision === 'sempre')) {
-    if (card.decision === 'sempre') await remember($, repo)
+  if (repo && (card.decision === 'allow' || card.decision === 'always')) {
+    if (card.decision === 'always') await remember($, repo)
     // Without the keys: a tab holding them refuses the next card's focus, and that card waits unseen behind it.
     await openRepo($, repo, false)
     return null
   }
   const why: Record<string, string> = {
-    cancelar: 'negado no cartão',
-    tempo: 'negado: sem resposta em 10 minutos',
-    interrompido: 'negado: a chamada foi interrompida',
-    erro: 'negado: o trail deu erro ao segurar a chamada',
+    cancel: 'denied on the card',
+    timeout: 'denied: no answer in 10 minutes',
+    interrupted: 'denied: the call was interrupted',
+    error: 'denied: trail failed while holding the call',
   }
-  return { deny: `trail: acesso a ${root} ${why[card.decision ?? 'erro'] ?? why.erro}` }
+  return { deny: `trail: access to ${root} ${why[card.decision ?? 'error'] ?? why.error}` }
 }
 
-// Before the call runs: a tab for each git repo it touches that has none yet, or with abertura cartão a card for
+// Before the call runs: a tab for each git repo it touches that has none yet, or with opening card a card for
 // each repo outside the session.
 async function gate($: EngineInterface, e: { tool: string } & Record<string, unknown>, signal: AbortSignal): Promise<{ deny: string } | null> {
   const targets = writeTargets(e, home, readsToo)
   if (!targets.length) return null
   const covered = (t: Target) => [...instances.values()].some(inst => inRepo(inst.repo, t.path))
-  if (abertura === 'sozinha') {
+  if (opening === 'auto') {
     if (await muted($)) return null
     // The session's repo too, and a tab the person closed comes back: never a card, never a deny.
     for (const t of targets) {
@@ -2742,19 +2742,19 @@ async function gate($: EngineInterface, e: { tool: string } & Record<string, unk
 }
 
 export const register: Register = (on, options) => {
-  tabFollows = options?.abaSegue !== 'off'
-  sessionTab = options?.abaDaSessao !== 'off'
-  readsToo = options?.leitura !== 'não'
-  diagnose = options?.diagnostico === 'on'
-  animacao = options?.animacao === 'clássico' ? 'clássico' : 'moderno'
-  aoVivo = options?.aoVivo === 'instantâneo' ? 'instantâneo' : 'animado'
-  abertura = options?.abertura === 'cartão' ? 'cartão' : 'sozinha'
-  const big = parseInt(String(options?.pastaGrande ?? ''), 10)
-  pastaGrande = Number.isInteger(big) && big >= 0 ? big : 200
+  tabFollows = options?.followTab !== 'off'
+  sessionTab = options?.sessionTab !== 'off'
+  readsToo = options?.reads !== 'no'
+  diagnose = options?.diagnostics === 'on'
+  replayAnimation = options?.replayAnimation === 'classic' ? 'classic' : 'modern'
+  liveAnimation = options?.liveAnimation === 'instant' ? 'instant' : 'animated'
+  opening = options?.opening === 'card' ? 'card' : 'auto'
+  const big = parseInt(String(options?.bigFolder ?? ''), 10)
+  bigFolder = Number.isInteger(big) && big >= 0 ? big : 200
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
   sizeDefault = options?.column === 'size'
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'trail', description: 'Abas de árvore por repo git, o da sessão e os de fora; args: [abrir <pasta> | fechar <raiz> | esquecer <raiz | tudo>]' })
+    await $.command.register({ name: 'trail', description: 'File tree tabs per git repo, the session\'s and outside ones; args: [open <folder> | close <root> | forget <root | all>]' })
     const windows = (await $.env.get('OS')) === 'Windows_NT'
     useDrives(windows)
     startCwd = (await $.state.get(START_CWD)).value || posix(e.cwd)
@@ -2791,49 +2791,49 @@ export const register: Register = (on, options) => {
       const kept = await remembered($)
       const hushed = await quiet($)
       const block = (head: string, rs: Repo[]) => (rs.length ? [head, ...rs.map(r => `  ${titleOf(r)}  ${r.key}`)] : [])
-      const lines = [...block('Abas abertas:', list), ...block('Sem cartão (não pedir de novo):', kept), ...block('Quietos nesta sessão (aba fechada à mão):', hushed)]
+      const lines = [...block('Open tabs:', list), ...block("No card (don't ask again):", kept), ...block('Quiet this session (tab closed by hand):', hushed)]
       // What the gate decides by, so a write that passed with no card can be explained from the screen.
       const v = views.get('terminal')
       const surfaces = await $.session.surfaces().catch(() => [] as const)
       lines.push(
-        `Sessão: ${startCwd || '?'} · raiz: ${posix(await $.session.root().catch(() => '')) || '?'}`,
-        `Tela: ${surfaces.join(', ') || 'nenhuma'}${v ? ` · ${v.columns} colunas · fullscreen ${v.isFullscreen === undefined ? '?' : v.isFullscreen ? 'sim' : 'não'}` : ''} · mudo: ${(await muted($)) ? 'sim' : 'não'}`,
+        `Session: ${startCwd || '?'} · root: ${posix(await $.session.root().catch(() => '')) || '?'}`,
+        `Screen: ${surfaces.join(', ') || 'none'}${v ? ` · ${v.columns} columns · fullscreen ${v.isFullscreen === undefined ? '?' : v.isFullscreen ? 'yes' : 'no'}` : ''} · muted: ${(await muted($)) ? 'yes' : 'no'}`,
       )
-      return { text: lines.length ? lines.join('\n') : `Nenhuma aba aberta. ${USAGE}` }
+      return { text: lines.length ? lines.join('\n') : `No tab open. ${USAGE}` }
     }
-    if (verb === 'esquecer') {
+    if (verb === 'forget') {
       const kept = await remembered($)
-      if (arg.trim() === 'tudo') {
+      if (arg.trim() === 'all') {
         await $.store.set(REMEMBERED, [])
-        return { text: kept.length ? `Esqueci ${kept.length} repo(s): o cartão volta para todos.` : 'Nenhum repo lembrado.' }
+        return { text: kept.length ? `Forgot ${kept.length} repo(s): the card comes back for all of them.` : 'No repo remembered.' }
       }
       const q = arg.trim().replace(/^["']|["']$/g, '').toLowerCase()
       const gone = q ? kept.filter(r => r.key.toLowerCase() === q || r.root.toLowerCase() === q || r.linux.toLowerCase() === q || r.root.split('/').pop()?.toLowerCase() === q || inRepo(r, arg.trim())) : []
-      if (!gone.length) return { text: `Nenhum repo lembrado para ${arg || '(vazio)'}. ${USAGE}` }
+      if (!gone.length) return { text: `No repo remembered for ${arg || '(empty)'}. ${USAGE}` }
       await $.store.set(REMEMBERED, kept.filter(r => !gone.includes(r)))
-      return { text: `Esqueci ${gone.map(titleOf).join(', ')}: o cartão volta na próxima escrita.` }
+      return { text: `Forgot ${gone.map(titleOf).join(', ')}: the card comes back on the next write.` }
     }
-    if (verb === 'abrir') {
+    if (verb === 'open') {
       // The layout checks are the terminal's: the desktop app docks the pane itself.
       const terminal = await $.session.surfaces().then(s => s.includes('terminal'), () => true)
-      if (terminal && !e.presentation.isFullscreen) return { text: 'trail mostra a aba na lateral, que pede o layout fullscreen. Rode /tui fullscreen e depois /trail abrir.' }
-      if (terminal && e.presentation.columns < 110) return { text: 'trail mostra a aba na lateral, que pede um terminal com pelo menos 110 colunas.' }
+      if (terminal && !e.presentation.isFullscreen) return { text: 'trail shows the tab on the side, which needs the fullscreen layout. Run /tui fullscreen and then /trail open.' }
+      if (terminal && e.presentation.columns < 110) return { text: 'trail shows the tab on the side, which needs a terminal of at least 110 columns.' }
       const t0 = await $.clock.now()
       const found = await resolveRepo($, arg, await cwdOf($))
-      if ('error' in found) return { text: `Não abri: ${found.error}.` }
+      if ('error' in found) return { text: `Did not open: ${found.error}.` }
       await hush($, found.repo, false)
       const { inst, opened } = await openRepo($, found.repo, true)
       const ms = Math.round((await $.clock.now()) - t0)
       const nodes = (await get($, inst)).nodes.length
-      const placed = opened && !opened.isPlaced ? ` Aba ainda não desenhada: ${(opened as { reason?: string }).reason ?? 'sem motivo'}.` : ''
-      return { text: `Aba ${titleOf(found.repo)} em ${shortPath(found.repo.root)} (${nodes} itens na raiz, ${ms} ms até a árvore e o git).${placed}` }
+      const placed = opened && !opened.isPlaced ? ` Tab not drawn yet: ${(opened as { reason?: string }).reason ?? 'no reason given'}.` : ''
+      return { text: `Tab ${titleOf(found.repo)} at ${shortPath(found.repo.root)} (${nodes} items at the root, ${ms} ms to the tree and git).${placed}` }
     }
-    if (verb === 'fechar') {
+    if (verb === 'close') {
       const id = findRepo(await repos($), arg)
-      if (!id) return { text: `Nenhuma aba para ${arg || '(vazio)'}. ${USAGE}` }
+      if (!id) return { text: `No tab for ${arg || '(empty)'}. ${USAGE}` }
       await $.ui.close({ id }).catch(() => undefined)
       await closeRepo($, id)
-      return { text: 'Aba fechada.' }
+      return { text: 'Tab closed.' }
     }
     return { text: USAGE }
   })

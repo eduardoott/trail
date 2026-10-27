@@ -1,8 +1,8 @@
 {
   "name": "trail",
   "owner": { "name": "Eduardo Ott" },
-  "metadata": { "description": "Trail: aba de árvore de arquivos por repo git que segue o Claude." },
+  "metadata": { "description": "Trail: a file tree tab per git repo that follows Claude." },
   "plugins": [
-    { "name": "trail", "source": "./", "description": "Trail: uma aba de árvore de arquivos por repo git, o da sessão e os de fora, WSL incluído; a aba do repo onde o Claude mexe vem para a frente e mostra o rastro do que ele leu e editou. Abre com /trail abrir <pasta>.", "version": "0.1.0", "category": "mod" }
+    { "name": "trail", "source": "./", "description": "Trail: a file tree tab per git repo, the session repo and outside ones, WSL included; the tab of the repo Claude works in comes to the front and shows the trail of what it read and edited. Open one with /trail open <folder>.", "version": "0.2.0", "category": "mod" }
   ]
 }

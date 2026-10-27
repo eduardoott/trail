@@ -1,43 +1,43 @@
 {
   "name": "trail",
   "version": "0.2.0",
-  "description": "Trail: uma aba de árvore de arquivos por repo git, o da sessão e os de fora, que segue o Claude e mostra o rastro do que ele leu e editou",
+  "description": "Trail: a file tree tab per git repo, the session's and outside ones, that follows Claude and shows the trail of what it read and edited",
   "types": "./types/index.d.ts",
   "userConfig": {
-    "abaSegue": {
+    "followTab": {
       "type": "string",
-      "title": "Aba segue o Claude",
-      "description": "on: a aba do repo onde o Claude lê, edita ou roda comando vem para a frente sozinha. off: as abas só mudam quando você clica.",
+      "title": "Tab follows Claude",
+      "description": "on: the tab of the repo where Claude reads, edits or runs a command comes to the front by itself. off: tabs only change when you click.",
       "default": "on",
       "options": [
         "on",
         "off"
       ]
     },
-    "abaDaSessao": {
+    "sessionTab": {
       "type": "string",
-      "title": "Aba do repo da sessão",
-      "description": "on: ao iniciar a sessão, abre também uma aba para o repo onde a sessão roda, para a troca automática alcançar ele. off: só abre o que você pedir com /trail abrir.",
+      "title": "Session repo tab",
+      "description": "on: at session start, also opens a tab for the repo the session runs in, so the automatic switch reaches it. off: only opens what you ask for with /trail open.",
       "default": "on",
       "options": [
         "on",
         "off"
       ]
     },
-    "leitura": {
+    "reads": {
       "type": "string",
-      "title": "Leitura também",
-      "description": "sim: a aba abre (ou o cartão aparece, no modo cartão) também quando o Claude só lê (Read, Grep, cat, grep, ls, Get-Content). não: só quando ele escreve.",
-      "default": "sim",
+      "title": "Reads too",
+      "description": "yes: the tab opens (or the card shows, in card mode) also when Claude only reads (Read, Grep, cat, grep, ls, Get-Content). no: only when it writes.",
+      "default": "yes",
       "options": [
-        "sim",
-        "não"
+        "yes",
+        "no"
       ]
     },
     "glyphs": {
       "type": "string",
-      "title": "Ícones",
-      "description": "auto: ícones Nerd Font quando houver um instalado, menos no app desktop. nerd: sempre Nerd Font. plain: só Unicode.",
+      "title": "Icons",
+      "description": "auto: Nerd Font icons when one is installed, except in the desktop app. nerd: always Nerd Font. plain: Unicode only.",
       "default": "auto",
       "options": [
         "auto",
@@ -47,58 +47,58 @@
     },
     "column": {
       "type": "string",
-      "title": "Coluna da direita",
-      "description": "O que a coluna da direita mostra ao abrir a aba: date (última modificação) ou size (tamanho). O botão Σ no topo troca.",
+      "title": "Right column",
+      "description": "What the right column shows when the tab opens: date (last modified) or size. The Σ button at the top switches it.",
       "default": "date",
       "options": [
         "date",
         "size"
       ]
     },
-    "diagnostico": {
+    "diagnostics": {
       "type": "string",
-      "title": "Linha de diagnóstico",
-      "description": "on: escreve na conversa uma linha cinza cada vez que o mod traz uma aba para a frente. off: só no log de debug.",
+      "title": "Diagnostic line",
+      "description": "on: writes a gray line in the conversation each time the mod brings a tab to the front. off: only in the debug log.",
       "default": "off",
       "options": [
         "off",
         "on"
       ]
     },
-    "animacao": {
+    "replayAnimation": {
       "type": "string",
-      "title": "Animação do replay",
-      "description": "clássico: o replay de sempre, acende cada comando por 2 s. moderno: barra que navega até o arquivo, pastas abrindo filho a filho, ícone de lupa ou lápis, contadores.",
-      "default": "moderno",
+      "title": "Replay animation",
+      "description": "classic: the usual replay, lights each command for 2 s. modern: a bar that walks to the file, folders opening child by child, a magnifier or pencil icon, counters.",
+      "default": "modern",
       "options": [
-        "clássico",
-        "moderno"
+        "classic",
+        "modern"
       ]
     },
-    "aoVivo": {
+    "liveAnimation": {
       "type": "string",
-      "title": "Animação ao vivo",
-      "description": "animado: cada leitura ou edição do Claude toca na aba a versão curta da animação do replay (só no moderno). instantâneo: a luz acende na hora, como antes.",
-      "default": "animado",
+      "title": "Live animation",
+      "description": "animated: each read or edit by Claude plays in the tab the short version of the replay animation (modern only). instant: the light comes on at once, as before.",
+      "default": "animated",
       "options": [
-        "animado",
-        "instantâneo"
+        "animated",
+        "instant"
       ]
     },
-    "abertura": {
+    "opening": {
       "type": "string",
-      "title": "Como a aba abre",
-      "description": "sozinha: a primeira edição do Claude num repo git abre a aba dele, e aba fechada à mão volta na próxima edição. cartão: como antes, um cartão pede permissão na primeira escrita num repo de fora e aba fechada fica fechada na sessão.",
-      "default": "sozinha",
+      "title": "How the tab opens",
+      "description": "auto: Claude's first edit in a git repo opens its tab, and a tab closed by hand comes back on the next edit. card: as before, a card asks for permission on the first write in an outside repo, and a closed tab stays closed for the session.",
+      "default": "auto",
       "options": [
-        "sozinha",
-        "cartão"
+        "auto",
+        "card"
       ]
     },
-    "pastaGrande": {
+    "bigFolder": {
       "type": "string",
-      "title": "Pasta grande",
-      "description": "Pasta com mais arquivos que isso abre dobrada: só o que o Claude tocou, o que mudou no git e 3 vizinhos de cada, o resto em blocos \"… N arquivos\" clicáveis; o número no cabeçalho abre a pasta inteira. 0 desliga.",
+      "title": "Big folder",
+      "description": "A folder with more files than this opens folded: only what Claude touched, what changed in git and 3 neighbours of each, the rest in clickable \"… N files\" blocks; the number in the header opens the whole folder. 0 turns it off.",
       "default": "200",
       "options": [
         "200",

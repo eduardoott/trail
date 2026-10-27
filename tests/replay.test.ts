@@ -167,9 +167,9 @@ test('namesOf a file tool is the tool itself', () => {
   expect(namesOf('NotebookEdit', '')).toEqual(['NotebookEdit'])
 })
 test('namesOf a shell command is the first word of each segment, quotes and escapes kept whole', () => {
-  expect(namesOf('Bash', "sed -i 's/azul/verde/' teste-tela/shell.txt")).toEqual(['sed'])
-  expect(namesOf('Bash', 'cd "/c/projetos/exemplo" && grep -n "function walk\\|export type Node" src/tree.ts | head -20')).toEqual(['cd', 'grep', 'head'])
-  expect(namesOf('Bash', 'rm teste-tela/apagar.txt')).toEqual(['rm'])
+  expect(namesOf('Bash', "sed -i 's/blue/green/' test-screen/shell.txt")).toEqual(['sed'])
+  expect(namesOf('Bash', 'cd "/c/projects/example" && grep -n "function walk\\|export type Node" src/tree.ts | head -20')).toEqual(['cd', 'grep', 'head'])
+  expect(namesOf('Bash', 'rm test-screen/delete.txt')).toEqual(['rm'])
   expect(namesOf('Bash', 'FOO=1 sudo /usr/bin/grep -r a .; echo "x | y"')).toEqual(['grep', 'echo'])
   expect(namesOf('Bash', "echo 'a && b' || ls\nwc -l")).toEqual(['echo', 'ls', 'wc'])
   expect(namesOf('PowerShell', 'C:\\x\\py.exe -I run.py; Get-ChildItem | Select-Object -First 3')).toEqual(['py.exe', 'Get-ChildItem', 'Select-Object'])
@@ -223,7 +223,7 @@ test('namesOf skips a here-document body and words that are no program name', ()
   expect(namesOf('Bash', 'tr a b <<< abc; ls')).toEqual(['tr', 'ls'])
 })
 
-// Fase 9: reveals count against the cap like the bar's moves do, so a huge folder opens within it.
+// Phase 9: reveals count against the cap like the bar's moves do, so a huge folder opens within it.
 test('opening a folder of 1533 children stays within the cap, in the replay and live', () => {
   const dir = '/r/db'
   const kids = Array.from({ length: 1533 }, (_, i) => `${dir}/p${i}`)

@@ -5,7 +5,7 @@ import { stronger } from './icons'
 export type Entry = { name: string; kind: 'file' | 'dir' | 'other'; mtimeMs: number; size: number; isLink: boolean }
 // count: the files a fold row stands for.
 export type Row = { node: FileNode; depth: number; open: boolean; count?: number }
-// Fase 9: a folder with more direct children than limit opens folded around the files that matter.
+// Phase 9: a folder with more direct children than limit opens folded around the files that matter.
 export type FoldCtx = { touched: Set<string>; limit: number }
 export const FOLD_CONTEXT = 3
 

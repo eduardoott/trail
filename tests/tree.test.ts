@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { FileTree } from '../types'
 import { emptyTree, toNodes, visibleRows } from '../hooks/tree'
 
-// Fase 9: a folder past `limit` children opens folded, showing only what matters and `… N arquivos` blocks between.
+// Phase 9: a folder past `limit` children opens folded, showing only what matters and `… N files` blocks between.
 const ROOT = 'C:/repo'
 const DIR = `${ROOT}/database/40-procedure`
 const name = (i: number) => `usp_${String(i).padStart(4, '0')}.sql`

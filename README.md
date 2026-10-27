@@ -6,7 +6,7 @@ A Claude Code mod: a file tree tab for each git repo Claude works in, the sessio
 
 - One tab per git repo. Claude's first edit in a repo opens its tab.
 - The tab follows Claude: the repo being edited comes to the front.
-- Trail: what Claude read and edited stays lit in the tree, with line counters. Git actions (commit, push, pull, gh) show on a line under the branch, pulsing in their colour while they run.
+- Trail: what Claude read and edited stays lit in the tree, with line counters. Git actions (commit, push, pull, gh) show on a line under the branch, pulsing in their colour while they run. The git result also comes back in the replay, under the branch, while its step plays.
 - Replay: the buttons at the top of the tab replay the last turn, command by command; the speed button cycles 1x, 2x, 5x, 0.5x and 0.25x.
 - The `±` button keeps only changed files; the `Σ` button toggles the right column between date and size.
 - Big folders open folded: only the files Claude touched, the ones changed in git and 3 neighbours of each are shown, the rest collapse into clickable "… N files" blocks, and the count in the header opens the whole folder.

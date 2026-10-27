@@ -16,7 +16,7 @@ const WSL_STATUS = '## main...origin/main\0 M wsl-only.md\0'
 
 const waits: (() => void)[] = []
 // front: a pane the person holds, which keeps the front whatever opens.
-const git = { winStatus: '## dev\0?? win-only.md\0', wslStatus: WSL_STATUS, numstat: '', front: '', surface: 'desktop', cwd: 'C:/Users/user/Documents/Code/project' }
+const git = { winStatus: '## dev\0?? win-only.md\0', wslStatus: WSL_STATUS, numstat: '', tree: '', front: '', surface: 'desktop', cwd: 'C:/Users/user/Documents/Code/project' }
 
 function world(on: any, ran: string[][], opens: any[], noGit = false) {
   waits.length = 0
@@ -69,6 +69,8 @@ function world(on: any, ran: string[][], opens: any[], noGit = false) {
     if (verb === 'rev-parse') return ok(`${WIN_ROOT}\n`)
     if (verb === 'status') return ok(argv[0] === 'wsl.exe' ? git.wslStatus : git.winStatus)
     if (verb === 'diff' && argv.includes('--numstat') && argv[0] === 'wsl.exe') return ok(git.numstat)
+    // The files of the last commit, as diff-tree lists them: what a commit lights in green.
+    if (verb === 'diff-tree' && argv[0] === 'wsl.exe') return ok(git.tree)
     return ok('')
   })
   return clock
@@ -2674,4 +2676,33 @@ test('classic replays the branch step with no chip line', { options: { sessionTa
   const frames = await replayDrawn($, clock, ui)
   expect(JSON.stringify(frames[0])).toContain('■ 1/1')
   for (const d of frames) expect(textOf(d)).not.toContain('committ')
+})
+
+// The final form holds long enough to read: at least 20 ticks before the step ends.
+test('▷ of a git commit keeps committed and its hash under the branch for at least 20 ticks', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  gate.result = SHA
+  await command(clock, gate, $.tool.call({ tool: 'Bash', command: COMMIT } as any))
+  const frames = await replayDrawn($, clock, ui)
+  expect(frames.filter(d => chipRowOf(d, 'committed')).length).toBeGreaterThanOrEqual(20)
+  expect(textOf(frames[frames.length - 1])).not.toContain('committ')
+})
+
+test('▷ of a commit that lights files switches to committed at the first settle, while a later file still plays', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  git.tree = 'wsl-only.md\0database/schema.sql\0'
+  try {
+    const { clock, gate, ui } = await litWorld($, on)
+    await $.prompt.submit({ text: 'x' } as any)
+    gate.result = SHA
+    await command(clock, gate, $.tool.call({ tool: 'Bash', command: `git -C /home/user/my-repo add wsl-only.md && ${COMMIT}` } as any))
+    const frames = await replayDrawn($, clock, ui)
+    // A file row still playing draws the command's chips after its name.
+    const playing = (d: any) => JSON.stringify(clientRows(d) ?? []).includes(' git commit ')
+    expect(frames.some(d => chipRowOf(d, 'committing…') && playing(d))).toBe(true)
+    expect(frames.some(d => chipRowOf(d, 'committed') && playing(d))).toBe(true)
+    expect(textOf(frames[frames.length - 1])).not.toContain('committ')
+  } finally {
+    git.tree = ''
+  }
 })

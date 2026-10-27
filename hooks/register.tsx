@@ -40,7 +40,7 @@ import {
 import { inRepo, linuxOf, mentions, paneId, resolveRepo, titleOf, toUnc } from './wsl'
 import { type Blind, insideSession, shellBlind, shellReads, shellWrites, type Target, writeTargets } from './detect'
 import { type Card, CARD_ROWS, drawCard } from './card'
-import { BRANCH_ROW, CATCH, type Frame, type Kind, kindOf, lineDelta, LIVE, LIVE_QUEUE, namesOf, plan, rampOf, record, RUSH, splitStep, type Step, type StepFile, stepsFor, ticksOf, TIMING } from './replay'
+import { BRANCH_ROW, CATCH, type Frame, holdGit, type Kind, kindOf, lineDelta, LIVE, LIVE_QUEUE, namesOf, plan, rampOf, record, RUSH, splitStep, type Step, type StepFile, stepsFor, ticksOf, TIMING } from './replay'
 
 const THEME = { plugin: 'trail', key: 'theme' } as const
 const REPOS = { plugin: 'trail', key: 'repos' } as const
@@ -1043,6 +1043,7 @@ async function playModern($: EngineInterface, s: Instance, steps: Step[], token:
   if (r.bar === null && ids.includes(cur.cursor)) r.bar = cur.cursor
   r.kids = kidsOf(s, cur, root, tones, r)
   r.frames = plan(r.step, ids, r.bar, r.kids, TIMING, false, own.length ? { order, ids: new Set(own) } : undefined)
+  if (step.git && BRANCH_ROW in tones) r.frames = holdGit(r.frames)
   await patch($, s, t => ({ tick: t.tick + 1 }))
   if (s.replay !== r) return
   // A step left with nothing to light plays no frame: the next one starts at once.
@@ -1165,13 +1166,11 @@ function markIcon(p: Player): void {
 }
 
 // modern's step with a git result on the branch row: its chip in the running form, on the pulse driven by the
-// replay's frames, until the branch settles (or the step's last row, the branch having no frames beside files), then final.
+// replay's frames, until the step's first row settles (the branch has no frames beside files), then final.
 function replayedGit(r: Replay | null): { a: Activity; bg?: string } | null {
   const g = r?.modern && r.frames.length && r.step && BRANCH_ROW in r.step.tones ? r.step.git : undefined
   if (!r || !g) return null
-  const settles = r.frames.flatMap((f, i) => (f.kind === 'settle' ? [i] : []))
-  const own = r.frames.findIndex(f => f.kind === 'settle' && f.file === BRANCH_ROW)
-  const end = own >= 0 ? own : (settles.at(-1) ?? -1)
+  const end = r.frames.findIndex(f => f.kind === 'settle')
   const a: Activity = { id: 0, at: 0, kind: g.kind, label: g.label, state: g.state, detail: g.detail, tone: g.tone, nerd: g.nerd, plain: g.plain }
   if (r.at > end) return { a }
   return { a: { ...a, label: g.running, state: 'running', detail: '' }, bg: (RAMPS[g.tone] ?? RAMPS.teal!)[PULSE_TONES[r.at % PULSE_TONES.length]!] }

@@ -210,6 +210,17 @@ export function rampOf(step: Step, file: string): string {
   return tone === 'orange' ? 'teal' : tone
 }
 
+// A step's git chip turns final at the step's first settle and stays at least this long before the step ends:
+// the between wait alone (4 ticks, 200 ms) went by unseen.
+export const GIT_HOLD = 20
+
+export function holdGit(frames: Frame[]): Frame[] {
+  const at = frames.findIndex(f => f.kind === 'settle')
+  if (at < 0) return frames
+  const after = ticksOf(frames.slice(at + 1))
+  return after >= GIT_HOLD ? frames : [...frames, { kind: 'wait', ticks: GIT_HOLD - after }]
+}
+
 export function ticksOf(frames: Frame[]): number {
   let n = 0
   for (const f of frames) {

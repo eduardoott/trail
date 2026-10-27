@@ -2408,13 +2408,17 @@ test('the replay of a read in a big folder reveals the 7 rows and the blocks, no
   }
 })
 
-// The git activity chip rides on the branch row, which pulses in the action's tone while the action runs.
+// The git activity chip rides on its own line under the branch row, which pulses in the action's tone while the action runs.
 function nodesOf(node: any): any[] {
   if (!node || typeof node !== 'object') return []
   const kids = Array.isArray(node) ? node : (node.children ?? [])
   return [...(Array.isArray(node) ? [] : [node]), ...kids.flatMap((kid: any) => nodesOf(kid))]
 }
 const branchRowOf = (drawn: any): any => nodesOf(drawn).find(n => n.type === 'Box' && n.props?.height === 1 && nodesOf(n).some(x => x.type === 'Text' && x.children?.[0] === 'main'))
+const textOf = (node: any): string => (typeof node === 'string' ? node : !node || typeof node !== 'object' ? '' : (Array.isArray(node) ? node : (node.children ?? [])).map(textOf).join(''))
+// The line under the branch row: a height 1 row without the head that draws the activity's label.
+const chipRowOf = (drawn: any, label: string): any =>
+  nodesOf(drawn).find(n => n.type === 'Box' && n.props?.height === 1 && !nodesOf(n).some(x => x.type === 'Text' && x.children?.[0] === 'main') && textOf(n).includes(label))
 const branchColor = (drawn: any): string | undefined => nodesOf(drawn).find(n => n.type === 'Text' && n.children?.[0] === 'main')?.props?.color
 const count = (text: string, needle: string) => text.split(needle).length - 1
 const COMMIT = 'git -C /home/user/my-repo commit -m x'
@@ -2426,17 +2430,41 @@ test('a running git commit draws its chip on the branch row, not in the footer, 
   const call = $.tool.call({ tool: 'Bash', command: COMMIT } as any)
   await clock.settle()
   const drawn = await ui.drawn()
-  expect(JSON.stringify(branchRowOf(drawn))).toContain('committing…')
+  expect(textOf(chipRowOf(drawn, 'committing…')).startsWith('  ')).toBe(true)
+  expect(JSON.stringify(branchRowOf(drawn))).not.toContain('committing…')
+  expect(JSON.stringify(branchRowOf(drawn))).toContain('origin/main')
   expect(count(JSON.stringify(drawn), 'committing…')).toBe(1)
   gate.release()
   await call
   await clock.settle()
   const after = await ui.drawn()
-  expect(JSON.stringify(branchRowOf(after))).toContain('committed')
+  expect(chipRowOf(after, 'committed')).not.toBe(undefined)
+  expect(JSON.stringify(branchRowOf(after))).not.toContain('committed')
   expect(JSON.stringify(after)).not.toContain('committing…')
   expect(count(JSON.stringify(after), 'committed')).toBe(1)
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.settle()
+})
+
+test('the tree window gives the chip line one row while the chip shows', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+  const root = DIRS[WSL_ROOT]!
+  // Past the native scroll limit the pane keeps its own window, sized by bodyRows less the fixed rows.
+  DIRS[WSL_ROOT] = [...root, ...Array.from({ length: 160 }, (_, i): [string, 'file'] => [`n${String(i).padStart(3, '0')}.md`, 'file'])]
+  try {
+    const { clock, gate, ui } = await litWorld($, on, { ...props, scroll: { offset: 0, bodyRows: 20 } })
+    const before = (await specs(ui)).length
+    await $.prompt.submit({ text: 'x' } as any)
+    const call = $.tool.call({ tool: 'Bash', command: COMMIT } as any)
+    await clock.settle()
+    expect(chipRowOf(await ui.drawn(), 'committing…')).not.toBe(undefined)
+    expect((await specs(ui)).length).toBe(before - 1)
+    gate.release()
+    await call
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.settle()
+  } finally {
+    DIRS[WSL_ROOT] = root
+  }
 })
 
 test('the branch name pulses 2 3 4 3 on the green ramp every 4 ticks while the commit runs, and stops when it resolves', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
@@ -2473,7 +2501,8 @@ test('liveAnimation instant draws the running chip on the branch row without a p
   const call = $.tool.call({ tool: 'Bash', command: COMMIT } as any)
   await clock.settle()
   const drawn = await ui.drawn()
-  expect(JSON.stringify(branchRowOf(drawn))).toContain('committing…')
+  expect(chipRowOf(drawn, 'committing…')).not.toBe(undefined)
+  expect(JSON.stringify(branchRowOf(drawn))).not.toContain('committing…')
   const first = branchColor(drawn)
   await clock.advance(8 * TICK)
   expect(branchColor(await ui.drawn())).toBe(first)
@@ -2484,14 +2513,17 @@ test('liveAnimation instant draws the running chip on the branch row without a p
   await clock.settle()
 })
 
-test('a failing push draws push failed in red on the branch row', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+test('a failing push draws push failed in red on the line under the branch row', { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)
   gate.fail = true
   await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo push' } as any))
   await clock.settle()
-  const row = branchRowOf(await ui.drawn())
-  expect(JSON.stringify(row)).toContain('push failed')
+  const drawn = await ui.drawn()
+  expect(JSON.stringify(branchRowOf(drawn))).not.toContain('push failed')
+  expect(JSON.stringify(branchRowOf(drawn))).toContain('origin/main')
+  const row = chipRowOf(drawn, 'push failed')
+  expect(textOf(row).startsWith('  ')).toBe(true)
   const label = nodesOf(row).find(n => n.type === 'Text' && n.children?.[0] === 'push failed')
   expect(label?.props?.color).toBe('#f87171')
   await $.classic.Stop({ stop_hook_active: false } as any)

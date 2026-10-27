@@ -2120,7 +2120,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   // The live light only while its frames play: idle, its bar stays parked on its row and the desktop scrolls natively.
   const parked = s.live !== null && !s.live.step && !s.live.queue.length
   if (rows.length > NATIVE_ROWS || (rp && !parked)) s.nativeScroll = false
-  const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.selected || runText ? 1 : 0)
+  const fixed = 2 + (t.top ? (t.branch ? 1 : 0) : 1) + (t.top && t.branch && latest ? 1 : 0) + (t.selected || runText ? 1 : 0)
   const ownRoom = Math.max(5, (props.scroll?.bodyRows ?? 40) - fixed)
   const room = s.nativeScroll ? Math.max(1, rows.length) : ownRoom
   const isLit = (x: string) => bright.has(x) || dimmed.has(x)
@@ -2334,53 +2334,60 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const pulse = s.pulse && latest?.state === 'running' ? (RAMPS[latest.tone] ?? RAMPS.teal!)[PULSE_TONES[s.pulse.frame % 4]!] : undefined
     const name = tinted ?? pulse
     return (
-      <Box flexDirection="row" height={1} overflow="hidden">
-        <Box flexDirection="row" flexShrink={0}>
-          <Text color={name ?? (isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent)}>{(unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd) + ' '}</Text>
-          <Text bold color={name ?? (isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined)}>
-            {b.head}
-          </Text>
-          {b.ahead > 0 && <Text color={TONES.teal?.solid}>{` ↑${b.ahead}`}</Text>}
-          {b.behind > 0 && <Text color={TONES.blue?.solid}>{` ↓${b.behind}`}</Text>}
-          {latest && chip(latest, pulse)}
-        </Box>
-        {branchChips.length > 0 && (
-          <Box flexDirection="row" flexShrink={1} overflow="hidden">
-            {branchChips.map(c => (
-              <Text color={c.c} backgroundColor={c.bg}>
-                {c.t}
-              </Text>
-            ))}
-          </Box>
-        )}
-        {b.upstream && (
-          <Box flexShrink={1} overflow="hidden">
-            <Text color={theme.muted} wrap="truncate-end">
-              {` ${b.upstream}`}
+      <Box flexDirection="column">
+        <Box flexDirection="row" height={1} overflow="hidden">
+          <Box flexDirection="row" flexShrink={0}>
+            <Text color={name ?? (isFlash ? (TONES[tone]?.solid ?? theme.accent) : theme.accent)}>{(unicode ? BRANCH_ICON.plain : BRANCH_ICON.nerd) + ' '}</Text>
+            <Text bold color={name ?? (isFlash ? (TONES[tone]?.solid ?? (theme.fg || undefined)) : theme.fg || undefined)}>
+              {b.head}
             </Text>
+            {b.ahead > 0 && <Text color={TONES.teal?.solid}>{` ↑${b.ahead}`}</Text>}
+            {b.behind > 0 && <Text color={TONES.blue?.solid}>{` ↓${b.behind}`}</Text>}
+          </Box>
+          {branchChips.length > 0 && (
+            <Box flexDirection="row" flexShrink={1} overflow="hidden">
+              {branchChips.map(c => (
+                <Text color={c.c} backgroundColor={c.bg}>
+                  {c.t}
+                </Text>
+              ))}
+            </Box>
+          )}
+          {b.upstream && (
+            <Box flexShrink={1} overflow="hidden">
+              <Text color={theme.muted} wrap="truncate-end">
+                {` ${b.upstream}`}
+              </Text>
+            </Box>
+          )}
+          <Box flexGrow={1} />
+          <Box flexDirection="row" flexShrink={0}>
+            {totals[0] > 0 && <Text color={ADD_COLOR}>{` +${totals[0]}`}</Text>}
+            {totals[1] > 0 && <Text color={DEL_COLOR}>{` -${totals[1]}`}</Text>}
+            {rootCounts.map(c => (
+              <Text color={c.c}>{c.t}</Text>
+            ))}
+            {rootCounts.length === 0 && totals[0] === 0 && totals[1] === 0 && <Text color={theme.muted}> clean</Text>}
+          </Box>
+        </Box>
+        {latest && (
+          <Box flexDirection="row" height={1} overflow="hidden">
+            <Text>{'  '}</Text>
+            {chip(latest, pulse)}
           </Box>
         )}
-        <Box flexGrow={1} />
-        <Box flexDirection="row" flexShrink={0}>
-          {totals[0] > 0 && <Text color={ADD_COLOR}>{` +${totals[0]}`}</Text>}
-          {totals[1] > 0 && <Text color={DEL_COLOR}>{` -${totals[1]}`}</Text>}
-          {rootCounts.map(c => (
-            <Text color={c.c}>{c.t}</Text>
-          ))}
-          {rootCounts.length === 0 && totals[0] === 0 && totals[1] === 0 && <Text color={theme.muted}> clean</Text>}
-        </Box>
       </Box>
     )
   }
 
-  // The git activity chip on the branch row: on the pulse's tone while it runs, dark text as chipsOf from tone 3 up.
+  // The git activity chip on the line under the branch row: on the pulse's tone while it runs, dark text as chipsOf from tone 3 up.
   const chip = (a: Activity, bg?: string) => {
     const tone = a.state === 'failed' ? 'red' : a.tone
     const color = bg ? '#1b1b1f' : (TONES[tone]?.solid ?? theme.accent)
     const icon = unicode ? a.plain : a.nerd
     const hash = a.state === 'done' && a.kind === 'git commit' ? a.detail.split(' ')[0] ?? '' : ''
     return (
-      <Box flexDirection="row" marginLeft={1} flexShrink={0}>
+      <Box flexDirection="row" flexShrink={0}>
         <Text color={color} backgroundColor={bg}>{(bg ? ' ' : '') + icon + ' '}</Text>
         <Text bold={a.state === 'running'} color={color} backgroundColor={bg}>
           {(a.state === 'running' ? `${a.label}…` : a.label) + (bg ? ' ' : '')}

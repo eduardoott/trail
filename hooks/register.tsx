@@ -70,7 +70,7 @@ const FIND_LIMIT = 200
 const BLIND_LIMIT = 2000
 const NATIVE_ROWS = 150
 const MIN_LIT_MS = 5000
-// Tone (index into the ramp) of a folder on the way to a live-lit file: OPEN QUESTION, reference swatch is index 2.
+// Tone (index into the ramp) of a folder on the way to a live-lit file.
 const DIM_TONE = 2
 const CHANGED_REVEAL_LIMIT = 400
 const READ_REVEAL_LIMIT = 12

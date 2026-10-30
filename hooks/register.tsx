@@ -1,7 +1,7 @@
 // Adapted from filetree 0.2.24 (Kurt Buhler), MIT License: see ../LICENSE.
 // One tree per external repo root instead of one tree that follows the session cwd.
 import { type BuiltinToolResults, type EngineInterface, type Register, type RenderInput, type Timer, update } from 'claude-code'
-import { LINUX_LAUNCH, openCommand, openWithCommand } from './open'
+import { openCommand } from './open'
 
 import type { Activity, FileNode, FileTree, Repo, StepGit, Theme } from '../types'
 import { BRANCH_ICON, chainOf, type GitAction, gitActions, RAMPS, readOnly, readTargets, resolve, TONES } from './git'
@@ -90,7 +90,6 @@ const PREVIEW_LINE = 2_000
 
 // `glyphs` and `column` come from userConfig; filetree's other options keep its defaults.
 let glyphSetting = 'auto'
-const openWithSetting = ''
 const showReads = true
 const showWrites = true
 const followClaude = true
@@ -368,14 +367,12 @@ function previewLines(text: string, top: number, rows: number, markdown: boolean
 
 async function openFile($: EngineInterface, path: string): Promise<void> {
   const os = await osName($)
-  const native = (p: string) => (os === 'win32' ? p.replace(/\//g, '\\') : p)
-  const custom = openWithCommand(openWithSetting, native(path), native(dirname(path)))
-  const { argv, init } = custom ? { argv: os === 'linux' ? ['sh', '-c', LINUX_LAUNCH, 'sh', ...custom] : custom, init: { timeoutMs: 10_000 } } : openCommand(os, path)
+  const { argv, init } = openCommand(os, path)
   try {
     const run = await $.process.run(argv, init)
-    if (run.exitCode !== 0) $.ui.toast(`could not open ${path} with ${custom?.[0] ?? argv[0]}: ${run.stderr.trim().split('\n')[0] || `exit ${run.exitCode}`}`)
+    if (run.exitCode !== 0) $.ui.toast(`could not open ${path} with ${argv[0]}: ${run.stderr.trim().split('\n')[0] || `exit ${run.exitCode}`}`)
   } catch {
-    $.ui.toast(`could not open ${path} with ${custom?.[0] ?? argv[0]}`)
+    $.ui.toast(`could not open ${path} with ${argv[0]}`)
   }
 }
 

@@ -18,13 +18,22 @@ const waits: (() => void)[] = []
 // front: a pane the person holds, which keeps the front whatever opens.
 const git = { winStatus: '## dev\0?? win-only.md\0', wslStatus: WSL_STATUS, numstat: '', tree: '', front: '', surface: 'desktop', cwd: 'C:/Users/user/Documents/Code/project' }
 
+// What the rejection tests make the engine refuse, and what they saw refused.
+const faults = { cwd: false, open: false, fired: [] as string[] }
+
 function world(on: any, ran: string[][], opens: any[], noGit = false) {
   waits.length = 0
   mock.env(on, { OS: 'Windows_NT', USERPROFILE: 'C:\\Users\\user' })
   const clock = mock.clock(on, { now: 1_800_000_000_000 })
   mock.store(on)
   on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
-  on('session.cwd', () => ({ value: git.cwd }))
+  on('session.cwd', () => {
+    if (faults.cwd) {
+      faults.fired.push('cwd')
+      throw new Error('session.cwd down')
+    }
+    return { value: git.cwd }
+  })
   on('session.surfaces', () => ({ value: [git.surface] }))
   on('command.register', () => ({ value: undefined }))
   // The last pane opened is the one shown, the others are tabs behind it.
@@ -34,6 +43,10 @@ function world(on: any, ran: string[][], opens: any[], noGit = false) {
     return { value: ids.map(id => ({ id, title: id, isShown: id === shown, isFocused: false, isPlaced: true })) }
   })
   on('ui.open', (_$: any, e: any) => {
+    if (faults.open) {
+      faults.fired.push('open')
+      throw new Error('ui.open down')
+    }
     opens.push(e)
     return { value: { isPlaced: true } }
   })
@@ -2706,5 +2719,73 @@ test('▷ of a commit that lights files switches to committed at the first settl
     expect(textOf(frames[frames.length - 1])).not.toContain('committ')
   } finally {
     git.tree = ''
+  }
+})
+
+// A failure in what the wrapper awaits before next() must never cost the tool call. The engine's skip of a failed
+// hook is what carries these today, so they pin the outcome whichever layer provides it.
+function toolCounter(on: any) {
+  const tool = { ran: 0 }
+  on('tool.call', () => {
+    tool.ran += 1
+    return { result: { text: 'tool-ran', isError: false } } as any
+  })
+  return tool
+}
+
+test('the tool still runs when the repo lookup rejects before the call', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+  const clock = world(on, [], [])
+  const tool = toolCounter(on)
+  // No session.start: startCwd stays empty, the one way rootOf reaches an unguarded cwdOf.
+  faults.cwd = true
+  faults.fired.length = 0
+  try {
+    const result = await $.tool.call({ tool: 'Read', file_path: `${WIN_ROOT}/win-only.md` } as any)
+    await clock.settle()
+    expect(faults.fired).toContain('cwd')
+    expect(tool.ran).toBe(1)
+    expect(JSON.stringify(result)).toContain('tool-ran')
+  } finally {
+    faults.cwd = false
+  }
+})
+
+test('the tool still runs when opening the repo tab rejects before the call', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+  const opens: any[] = []
+  const clock = world(on, [], opens)
+  const tool = toolCounter(on)
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  faults.open = true
+  faults.fired.length = 0
+  try {
+    const result = await $.tool.call({ tool: 'Read', file_path: `${WIN_ROOT}/win-only.md` } as any)
+    await clock.settle()
+    expect(faults.fired).toContain('open')
+    expect(opens.length).toBe(0)
+    expect(tool.ran).toBe(1)
+    expect(JSON.stringify(result)).toContain('tool-ran')
+  } finally {
+    faults.open = false
+  }
+})
+
+test('the tool still runs when the session cwd rejects before a command in an open repo', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+  const clock = world(on, [], [])
+  const tool = toolCounter(on)
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  await $.command.run(openCmd('\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo'))
+  await clock.settle()
+  faults.cwd = true
+  faults.fired.length = 0
+  try {
+    const result = await $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo status' } as any)
+    await clock.settle()
+    expect(faults.fired).toContain('cwd')
+    expect(tool.ran).toBe(1)
+    expect(JSON.stringify(result)).toContain('tool-ran')
+  } finally {
+    faults.cwd = false
   }
 })

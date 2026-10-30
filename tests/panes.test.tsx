@@ -38,7 +38,9 @@ function world(on: any, ran: string[][], opens: any[], noGit = false) {
     return { value: { isPlaced: true } }
   })
   on('ui.toast', () => ({ value: undefined }))
-  const norm = (p: string) => p.replace(/\\/g, '/')
+  // The engine resolves a path for the host before a hook sees it: off Windows `//wsl...` loses a slash and
+  // `C:/x` or `\\wsl...` land under the cwd. The fixtures key on the spelling the mod passed, so undo that.
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/^.*?\/*(wsl\.localhost\/)/, '//$1').replace(/^.*?([A-Za-z]:\/)/, '$1')
   on('fs.read', (_$: any, e: any) => {
     const text = FILES[norm(e.path)]
     if (text === undefined) throw new Error('no file')

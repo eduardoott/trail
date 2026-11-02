@@ -2860,6 +2860,21 @@ test('a closed folder sums the dots of the files under it, one a kind with its c
   }
 })
 
+test('dots order kind groups the reads against the date column, then the edits, whatever the order they happened in', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dotsOrder: 'kind' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'three' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'y' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'z' } as any)
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'three', new_string: 'four' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.purple![3] }])
+})
+
 test('dots off draws no dot', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)

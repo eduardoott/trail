@@ -946,10 +946,10 @@ async function play($: EngineInterface, s: Instance, scope: 'last' | 'all'): Pro
   else await playClassic($, s, steps, token)
 }
 
-// The files whose last step in the trail removed them.
+// The files whose last step in the trail removed them; a removed folder is kept as nothing.
 function goneOf(trail: Step[]): string[] {
   const last = new Map<string, boolean>()
-  for (const step of trail) for (const p of Object.keys(step.tones)) last.set(p, Boolean(step.files?.[p]?.gone))
+  for (const step of trail) for (const p of Object.keys(step.tones)) last.set(p, Boolean(step.files?.[p]?.gone && !step.files[p]?.dir))
   return [...last].filter(([, gone]) => gone).map(([p]) => p)
 }
 
@@ -1488,12 +1488,12 @@ async function lightEarly($: EngineInterface, e: { tool: string }, epoch: number
     if (!Object.keys(tones).length) continue
     await revealPaths($, inst, Object.keys(tones))
     // A file not in the tree yet (a Write about to create it) has no row to play on: its result lights it, born.
-    const have = new Set((await get($, inst)).nodes.map(n => n.id))
+    const have = new Map((await get($, inst)).nodes.map(n => [n.id, n.kind]))
     for (const p of Object.keys(tones)) if (!have.has(p)) delete tones[p]
     if (!Object.keys(tones).length) continue
     // A file tool's write is an edit before its result says how many lines: pencil and orange from the first frame.
     // A shell removal is gone the same way: × and the red ramp from the first frame, its result confirming it.
-    const files: Record<string, StepFile> = file && e.tool !== 'Read' ? Object.fromEntries(Object.keys(tones).map(p => [p, { edit: true }])) : Object.fromEntries(Object.keys(tones).filter(p => removed.has(p)).map(p => [p, { gone: true }]))
+    const files: Record<string, StepFile> = file && e.tool !== 'Read' ? Object.fromEntries(Object.keys(tones).map(p => [p, { edit: true }])) : Object.fromEntries(Object.keys(tones).filter(p => removed.has(p)).map(p => [p, { gone: true, ...(have.get(p) === 'dir' ? { dir: true } : {}) }]))
     await flash($, inst, tones, epoch, Object.keys(files).length ? files : undefined, names)
   }
 }
@@ -2026,7 +2026,7 @@ async function cameAndWent($: EngineInterface, s: Instance, snaps: Snap[]): Prom
 
 // Before the command: whether each path it names was there (removes: the ones it removes) and the folders it writes
 // into without naming the files.
-type Before = { existed: Map<string, boolean>; removes: Set<string>; snaps: Snap[] }
+type Before = { existed: Map<string, boolean>; dirs: Set<string>; removes: Set<string>; snaps: Snap[] }
 
 async function afterTool($: EngineInterface, s: Instance, pending: Pending | null, command: string, cwd: string, since: Since, result: ToolResult, ps: boolean, epoch: number, before?: Before): Promise<void> {
   if (pending && result.deny) {
@@ -2053,7 +2053,7 @@ async function afterTool($: EngineInterface, s: Instance, pending: Pending | nul
   if (before) {
     for (const [p, was] of before.existed) {
       const is = await exists($, p)
-      if (was !== is && !result.isError) files[p] = is ? { born: true } : { gone: true }
+      if (was !== is && !result.isError) files[p] = is ? { born: true } : { gone: true, ...(before.dirs.has(p) ? { dir: true } : {}) }
       // The early light took the removal for done and the file is still there: its step is no deletion.
       else if (was && is && before.removes.has(p)) files[p] = { gone: false }
     }
@@ -3018,8 +3018,10 @@ export const register: Register = (on, options) => {
             return p && p !== inst.repo.root ? [{ p, gone: Boolean(t.gone) }] : []
           })
           const paths = [...new Set(mine.map(x => x.p))]
+          const stats = await Promise.all(paths.map(async p => [p, await $.fs.stat(p).then(x => x.kind, () => '')] as const))
           return {
-            existed: new Map(await Promise.all(paths.map(async p => [p, await exists($, p)] as const))),
+            existed: new Map(stats.map(([p, kind]) => [p, kind !== ''])),
+            dirs: new Set(stats.filter(([, kind]) => kind === 'dir').map(([p]) => p)),
             removes: new Set(mine.filter(x => x.gone).map(x => x.p)),
             snaps: await snapshot($, inst, blind),
           }

@@ -72,7 +72,8 @@ export type Theme = {
 
 // One step per command: calls sent together light together, so they replay together.
 // edit: a file tool's light as its call starts, before its counts come in; it plays as an edit from the first frame.
-export type StepFile = { added?: number; removed?: number; born?: boolean; gone?: boolean; edit?: boolean }
+// dir: the gone path was a folder; it plays as a ghost in its step but is kept as none (a folder is no file row).
+export type StepFile = { added?: number; removed?: number; born?: boolean; gone?: boolean; edit?: boolean; dir?: boolean }
 // shut: folders still closed when the command lit; the live light opens them, the replay shuts them again.
 // names: the command's labels in order (`Read`, `sed`, `git commit`), see namesOf in hooks/replay.ts.
 // git: the final result of the command's last git action (the live chip, with its running label); the replay draws it under the branch.

@@ -2908,3 +2908,28 @@ test('▷ of the last answer keeps the dots of the earlier answers while it play
   expect(JSON.stringify(await ui.drawn())).not.toContain('■ 1/1')
   expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
 })
+
+// A removed folder is no file: once the answer settles it leaves with its files, no struck row among the files.
+test('a shell rm of a folder leaves no struck row for the folder once the answer settles', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
+  const root = DIRS[WSL_ROOT]!
+  const db = DIRS[`${WSL_ROOT}/database`]!
+  try {
+    const { clock, gate, ui } = await litWorld($, on)
+    await $.prompt.submit({ text: 'x' } as any)
+    const call = $.tool.call({ tool: 'Bash', command: `rm -rf '${atWsl('database')}'` } as any)
+    await clock.advance(50)
+    DIRS[WSL_ROOT] = root.filter(([name]) => name !== 'database')
+    delete DIRS[`${WSL_ROOT}/database`]
+    gate.release()
+    await call
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    const rows = await specs(ui)
+    expect(rowOf(rows, 'database')).toBeUndefined()
+    expect(rowOf(rows, 'schema.sql')).toBeUndefined()
+    expect(rows.some(r => r.id === '')).toBe(false)
+  } finally {
+    DIRS[WSL_ROOT] = root
+    DIRS[`${WSL_ROOT}/database`] = db
+  }
+})

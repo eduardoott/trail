@@ -40,6 +40,7 @@ import {
 import { inRepo, linuxOf, mentions, paneId, resolveRepo, titleOf, toUnc } from './wsl'
 import { type Blind, insideSession, shellBlind, shellReads, shellWrites, type Target, writeTargets } from './detect'
 import { type Card, CARD_ROWS, drawCard } from './card'
+import { type DotsLimit, type DotsOrder, dotSegs, history } from './dots'
 import { BRANCH_ROW, CATCH, type Frame, holdGit, type Kind, kindOf, lineDelta, LIVE, LIVE_QUEUE, namesOf, plan, rampOf, record, RUSH, splitStep, type Step, type StepFile, stepsFor, ticksOf, TIMING } from './replay'
 
 const THEME = { plugin: 'trail', key: 'theme' } as const
@@ -101,6 +102,9 @@ let readsToo = true
 let diagnose = false
 // Phase 9: a folder with more direct children than this opens folded (0 turns the fold off).
 let bigFolder = 200
+// The dots after a file's name: how many before the row goes compact, and their order.
+let dotsLimit: DotsLimit = 8
+let dotsOrder: DotsOrder = 'time'
 // Replay skin: classic is the one-light-per-command player kept as it was; modern plays each step as frames.
 let replayAnimation: 'classic' | 'modern' = 'modern'
 // liveAnimation (modern only): animated plays each live light as the short replay of its step; instant lights at once, as before.
@@ -181,6 +185,8 @@ type Player = {
 
 // classic uses index, total, token and timer only; modern also plays each step's frames.
 type Replay = Player & {
+  // The steps it plays: the dots show only the ones played so far.
+  steps: Step[]
   index: number
   total: number
   token: number
@@ -934,7 +940,7 @@ async function play($: EngineInterface, s: Instance, scope: 'last' | 'all'): Pro
   forgetLit(s)
   const token = ++replayToken
   const modern = replayAnimation === 'modern'
-  s.replay = { index: 0, total: steps.length, token, timer: null, modern, step: null, frames: [], at: 0, bar: null, hidden: new Set(), kids: {}, shade: {}, ramps: {}, names: {}, icon: null, marks: {}, counts: {}, settled: {}, ghosts: [] }
+  s.replay = { steps, index: 0, total: steps.length, token, timer: null, modern, step: null, frames: [], at: 0, bar: null, hidden: new Set(), kids: {}, shade: {}, ramps: {}, names: {}, icon: null, marks: {}, counts: {}, settled: {}, ghosts: [] }
   await patch($, s, () => DARK)
   if (modern) await playModern($, s, steps, token)
   else await playClassic($, s, steps, token)
@@ -2301,12 +2307,15 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const dels = Boolean(loc && loc[1] > 0)
     const locText = `${adds ? ` +${loc![0]}` : ''}${dels ? ` -${loc![1]}` : ''}`
     const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
+    // The dots of a file: over the session's steps, or the steps the replay played so far.
+    const dots = n.kind === 'dir' ? [] : dotSegs(history(s.replay ? s.replay.steps.slice(0, s.replay.index) : s.trail, n.id), dotsLimit, dotsOrder)
+    const dotsText = dots.map(d => d.t).join('')
     const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
     const countsText = dirCounts.map(c => c.t).join('')
     // A big folder's header carries its count after the name: the click target of flat, accent while it is flat.
     const total = n.kind === 'dir' && isBig({ length: counts.get(n.id) ?? 0 }, bigFolder) ? `·${enUS.format(counts.get(n.id) ?? 0)}` : ''
     const totalSeg: Seg[] = total ? [{ t: total, c: t.flat.includes(n.id) ? theme.accent : theme.muted, flat: n.id }] : []
-    const cols = Math.max(4, width - r.depth * 2 - 6 - (rp ? 1 : 0) - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length - total.length)
+    const cols = Math.max(4, width - r.depth * 2 - 6 - (rp ? 1 : 0) - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length - total.length - dotsText.length)
     const name = n.name.length > cols ? n.name.slice(0, cols - 1) + '…' : n.name
     const caret = n.kind === 'dir' ? (unicode ? (r.open ? '▾' : '▸') : r.open ? CHEVRON_OPEN : CHEVRON_CLOSED) + ' ' : '  '
     const isRepo = n.kind === 'dir' && n.id === t.top
@@ -2323,7 +2332,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
       // The chips come after the name, in the box the right side cuts: the name never shortens for them (cols stays).
       ...(n.kind === 'dir' ? [] : chipsOf(n.id)),
     ]
-    const right: Seg[] = []
+    const right: Seg[] = [...dots]
     if (meta) right.push({ t: ` ${meta}`, c: theme.muted })
     // The replay's own count in the mock's colors.
     if (adds) right.push({ t: ` +${loc![0]}`, c: counted ? RAMPS.green![3] : ADD_COLOR })
@@ -2832,6 +2841,9 @@ export const register: Register = (on, options) => {
   opening = options?.opening === 'card' ? 'card' : 'auto'
   const big = parseInt(String(options?.bigFolder ?? ''), 10)
   bigFolder = Number.isInteger(big) && big >= 0 ? big : 200
+  const dots = parseInt(String(options?.dots ?? ''), 10)
+  dotsLimit = options?.dots === 'off' || options?.dots === 'compact' ? options.dots : Number.isInteger(dots) && dots > 0 ? dots : 8
+  dotsOrder = options?.dotsOrder === 'kind' ? 'kind' : 'time'
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
   sizeDefault = options?.column === 'size'
   on('session.start', async ($, e, next) => {

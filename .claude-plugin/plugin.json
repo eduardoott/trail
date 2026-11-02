@@ -1,6 +1,6 @@
 {
   "name": "trail",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Trail: a file tree tab per git repo, the session's and outside ones, that follows Claude and shows the trail of what it read and edited",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -106,6 +106,30 @@
         "500",
         "1000",
         "0"
+      ]
+    },
+    "dots": {
+      "type": "string",
+      "title": "Dots",
+      "description": "The dots before the right column, one per thing Claude did to the file: purple read, orange edit, green new file, red removed, teal shell. The same thing done again in one answer is one dot. Past this many dots the row goes compact: one dot a kind with its count. compact: always one a kind. off: no dots.",
+      "default": "8",
+      "options": [
+        "8",
+        "4",
+        "12",
+        "16",
+        "compact",
+        "off"
+      ]
+    },
+    "dotsOrder": {
+      "type": "string",
+      "title": "Dots order",
+      "description": "time: the order Claude did them, the first against the right column. kind: grouped by colour, reads against the right column, then edits, then new, removed and shell.",
+      "default": "time",
+      "options": [
+        "time",
+        "kind"
       ]
     }
   },

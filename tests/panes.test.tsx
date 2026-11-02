@@ -704,7 +704,8 @@ test('the window follows the bar only when it leaves the band', { options: { ses
 })
 
 // 7.7: ■ puts out the bar, the icon, the tones and the rows still hidden at once, and no timer outlives it.
-test('■ in the middle of a step clears the bar, the icon, the tones and the hidden rows in one go', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
+// dots off: the dot keeps its tone past the stop, and this test is about the replay's tones alone.
+test('■ in the middle of a step clears the bar, the icon, the tones and the hidden rows in one go', { options: { sessionTab: 'off', replayAnimation: 'modern', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[`${WSL_ROOT}/database`]!
   DIRS[`${WSL_ROOT}/database`] = [['a.sql', 'file'], ...db]
   try {
@@ -2788,4 +2789,43 @@ test('the tool still runs when the session cwd rejects before a command in an op
   } finally {
     faults.cwd = false
   }
+})
+
+// The dots: one per thing Claude did to the file over the session, before the date column.
+import { DOT } from '../hooks/dots'
+const dotsOf = (row: any) => (row?.right ?? []).filter((s: any) => s.t.startsWith(` ${DOT}`))
+
+test('a Read and an Edit leave two dots before the date, the read on the right, kept past the end of the answer', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await command(clock, gate, read('wsl-only.md'))
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'three' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  const row = rowOf(await specs(ui), 'wsl-only.md')
+  expect(dotsOf(row)).toEqual([{ t: ` ${DOT}`, c: RAMPS.orange![3] }, { t: ` ${DOT}`, c: RAMPS.purple![3] }])
+  // The dots come before the date column.
+  expect(row.right.findIndex((s: any) => s.t.startsWith(` ${DOT}`))).toBeLessThan(row.right.findIndex((s: any) => /\d/.test(s.t) && !s.t.startsWith(` ${DOT}`)))
+})
+
+test('dots compact draws one dot a kind with its count', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'compact' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'y' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: ` ${DOT}(2)`, c: RAMPS.purple![3] }])
+})
+
+test('dots off draws no dot', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([])
 })

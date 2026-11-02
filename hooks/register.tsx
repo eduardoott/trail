@@ -2270,7 +2270,13 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     return { ...spec, left: [{ t: '▌', c: k ? rampFor(id)[k - 1] : theme.muted }, ...spec.left], bg: barBg }
   }
   // The dots of a file: over the session's steps, or the steps the replay played so far.
-  const dotsFor = (id: string) => dotSegs(history(s.replay ? s.replay.steps.slice(0, s.replay.index) : s.trail, id), dotsLimit, dotsOrder)
+  const played = s.replay ? s.replay.steps.slice(0, s.replay.index) : s.trail
+  const dotsFor = (id: string) => dotSegs(history(played, id), dotsLimit, dotsOrder)
+  // A closed folder sums the files under it, always compact: one dot a kind with its count.
+  const folderDots = (dir: string) => {
+    const under = [...new Set(played.flatMap(one => Object.keys(one.tones)))].filter(p => p !== BRANCH_ROW && p !== dir && inside(dir, p))
+    return dotsLimit === 'off' ? [] : dotSegs(under.flatMap(p => history(played, p)), 'compact', dotsOrder)
+  }
   const rowSpec = (r: (typeof rows)[number]): RowSpec => {
     const n = r.node
     // id '' keeps the ghost out of clicks, copy and the cursor.
@@ -2319,7 +2325,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const locText = `${adds ? ` +${loc![0]}` : ''}${dels ? ` -${loc![1]}` : ''}`
     const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
     // The dots of a file: over the session's steps, or the steps the replay played so far.
-    const dots = n.kind === 'dir' ? [] : dotsFor(n.id)
+    const dots = n.kind === 'dir' ? (r.open ? [] : folderDots(n.id)) : dotsFor(n.id)
     const dotsText = dots.map(d => d.t).join('')
     const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
     const countsText = dirCounts.map(c => c.t).join('')

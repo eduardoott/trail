@@ -2841,6 +2841,25 @@ test('a commit leaves a dot on each file it committed, after the answer and afte
   }
 })
 
+test('a closed folder sums the dots of the files under it, one a kind with its count; open, it draws none', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const db = DIRS[`${WSL_ROOT}/database`]!
+  DIRS[`${WSL_ROOT}/database`] = [['a.sql', 'file'], ...db]
+  try {
+    const { clock, gate, read, ui } = await litWorld($, on)
+    await $.prompt.submit({ text: 'x' } as any)
+    await command(clock, gate, read('database\\schema.sql'))
+    await command(clock, gate, read('database\\a.sql'))
+    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('database/a.sql'), old_string: 'a', new_string: 'b' } as any))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([])
+    await ui.press({ key: 'collapse' })
+    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: ` ${DOT}(2)`, c: RAMPS.purple![3] }])
+  } finally {
+    DIRS[`${WSL_ROOT}/database`] = db
+  }
+})
+
 test('dots off draws no dot', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)

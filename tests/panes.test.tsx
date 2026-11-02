@@ -2821,6 +2821,21 @@ test('dots compact draws one dot a kind with its count', { options: { sessionTab
   expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: `${DOT}(2)`, c: RAMPS.purple![3] }])
 })
 
+test('a commit leaves a dot on each file it committed, after the answer and after its replay', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  git.tree = 'wsl-only.md '
+  try {
+    const { clock, gate, ui } = await litWorld($, on)
+    await $.prompt.submit({ text: 'x' } as any)
+    gate.result = { result: { text: 'ok', isError: false, gitOperation: { commit: { sha: 'abc1234def' } } } }
+    await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo add wsl-only.md && git -C /home/user/my-repo commit -m x' } as any))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: DOT, c: RAMPS.green![3] }])
+  } finally {
+    git.tree = ''
+  }
+})
+
 test('dots off draws no dot', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
   await $.prompt.submit({ text: 'x' } as any)

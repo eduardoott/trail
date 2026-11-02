@@ -29,6 +29,12 @@ test('born, gone and a shell write without counts are their own kinds', () => {
   expect(history(trail, 'a')).toEqual(['born', 'shell', 'gone'])
 })
 
+test('a commit is its own green dot, even after a shell write in the same answer', () => {
+  const trail = [step(1, 1, { a: 'purple' }), step(2, 1, { a: 'orange' }), step(3, 1, { a: 'green' })]
+  expect(history(trail, 'a')).toEqual(['read', 'shell', 'commit'])
+  expect(dotSegs(['commit'], 8, 'time')).toEqual([{ t: DOT, c: tone('green') }])
+})
+
 test('time order draws the oldest dot on the right, each dot in its tone, glued together', () => {
   expect(dotSegs(['read', 'edit'], 8, 'time')).toEqual([
     { t: DOT, c: tone('orange') },

@@ -6,16 +6,19 @@ import { KIND_RAMP, type Kind, kindOf, type Step } from './replay'
 export const DOT = '•'
 export type DotsLimit = number | 'compact' | 'off'
 export type DotsOrder = 'time' | 'kind'
+// A commit lights its files green: a dot of its own, not a shell write.
+export type DotKind = Kind | 'commit'
 // Right to left when grouped by kind: reads against the date column, then edits, then the rest.
-const BY_KIND: Kind[] = ['shell', 'gone', 'born', 'edit', 'read']
+const BY_KIND: DotKind[] = ['commit', 'shell', 'gone', 'born', 'edit', 'read']
 
 // What the steps did to the file, oldest first. The same thing done again inside one answer is one dot.
-export function history(trail: Step[], file: string): Kind[] {
-  const out: Kind[] = []
-  let last: { turn: number; kind: Kind } | null = null
+export function history(trail: Step[], file: string): DotKind[] {
+  const out: DotKind[] = []
+  let last: { turn: number; kind: DotKind } | null = null
   for (const step of trail) {
     if (!(file in step.tones)) continue
-    const kind = kindOf(step, file)
+    const base = kindOf(step, file)
+    const kind: DotKind = base === 'shell' && step.tones[file] === 'green' ? 'commit' : base
     if (last && last.turn === step.turn && last.kind === kind) continue
     out.push(kind)
     last = { turn: step.turn, kind }
@@ -24,14 +27,14 @@ export function history(trail: Step[], file: string): Kind[] {
 }
 
 // Tone 3 of the kind's ramp: the settled tone of a lit row.
-const toneOf = (kind: Kind): string => RAMPS[kind === 'shell' ? 'teal' : KIND_RAMP[kind]]![3]!
+const toneOf = (kind: DotKind): string => RAMPS[kind === 'shell' ? 'teal' : kind === 'commit' ? 'green' : KIND_RAMP[kind]]![3]!
 
 // The segments of the dots, left to right, glued together. Past the limit the row goes compact: one dot a kind
 // with its count, a space between kinds.
-export function dotSegs(kinds: Kind[], limit: DotsLimit, order: DotsOrder): Seg[] {
+export function dotSegs(kinds: DotKind[], limit: DotsLimit, order: DotsOrder): Seg[] {
   if (limit === 'off' || kinds.length === 0) return []
   if (limit === 'compact' || kinds.length > limit) {
-    const n = new Map<Kind, number>()
+    const n = new Map<DotKind, number>()
     for (const k of kinds) n.set(k, (n.get(k) ?? 0) + 1)
     return BY_KIND.filter(k => n.has(k)).map((k, i) => ({ t: `${i ? ' ' : ''}${DOT}${(n.get(k) ?? 0) > 1 ? `(${n.get(k)})` : ''}`, c: toneOf(k) }))
   }

@@ -2933,3 +2933,28 @@ test('a shell rm of a folder leaves no struck row for the folder once the answer
     DIRS[`${WSL_ROOT}/database`] = db
   }
 })
+
+test('a long name is cut with … so the name, its dots and the date fit the width', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const root = DIRS[WSL_ROOT]!
+  const long = 'a-name-of-forty-characters-for-the-cut.md'
+  const width = 40
+  DIRS[WSL_ROOT] = [...root, [long, 'file']]
+  try {
+    const { clock, gate, read, ui } = await litWorld($, on, { ...props, bodyColumns: width })
+    await $.prompt.submit({ text: 'x' } as any)
+    await command(clock, gate, read(long))
+    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl(long), old_string: 'a', new_string: 'b' } as any))
+    await command(clock, gate, read(long))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    const row = rowOf(await specs(ui), long)
+    expect(dotsOf(row).length).toBe(3)
+    const name = row.left.find((s: any) => s.t.endsWith('…'))
+    expect(long.startsWith(name?.t.slice(0, -1))).toBe(true)
+    // Indent, caret, glyph and name on the left; dots, date and badge on the right: all inside the width.
+    const used = [...row.left, ...row.right].reduce((n: number, s: any) => n + s.t.length, 0)
+    expect(used).toBeLessThan(width + 1)
+  } finally {
+    DIRS[WSL_ROOT] = root
+  }
+})

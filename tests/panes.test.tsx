@@ -626,7 +626,7 @@ test('counters count up from zero during the icon and go back to the git numbers
 })
 
 // The file is gone from the tree after the rm; its step draws it struck through in its old place,
-// and it leaves the list on the settle.
+// and it leaves the list on the settle; out of the replay it stays as a kept ghost.
 test('a shell rm records gone, and the replay shows a struck ghost that leaves on the settle', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   try {
@@ -640,7 +640,7 @@ test('a shell rm records gone, and the replay shows a struck ghost that leaves o
     await call
     await $.classic.Stop({ stop_hook_active: false } as any)
     await clock.advance(10_000)
-    expect(await rows()).not.toContain('wsl-only.md')
+    expect(rowOf(await specs(ui), 'wsl-only.md')?.id).toBe('')
     await ui.press({ key: 'replay-last' })
     await clock.advance(10)
     expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
@@ -657,7 +657,7 @@ test('a shell rm records gone, and the replay shows a struck ghost that leaves o
     expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
     await clock.advance(4 * TICK)
     expect(JSON.stringify(await ui.drawn())).not.toContain('■ 1/1')
-    expect(await rows()).not.toContain('wsl-only.md')
+    expect(rowOf(await specs(ui), 'wsl-only.md')?.id).toBe('')
   } finally {
     DIRS[WSL_ROOT] = root
   }
@@ -2078,7 +2078,7 @@ test('live: a shell loop writing through a variable plays each new file as born,
 const three = MANY.slice(0, 3)
 const threeNames = three.map(([name]) => name)
 for (const [how, command] of [['spelled out', `rm ${threeNames.map(name => `'${atWsl(name)}'`).join(' ')}`], ['as a glob', `rm ${WSL_ROOT}/a0*.md`]] as const)
-test(`live: an rm of three files ${how} plays three gone steps, each row kept as a ghost through its frames and gone after`, { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+test(`live: an rm of three files ${how} plays three gone steps, each row kept as a ghost through its frames, then kept struck with its red dot`, { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   const names = threeNames
   DIRS[WSL_ROOT] = [...root, ...three]
@@ -2104,11 +2104,11 @@ test(`live: an rm of three files ${how} plays three gone steps, each row kept as
       const rows = await specs(ui)
       names.forEach((name, i) => {
         const row = rowOf(rows, name)
-        if (!row) {
+        // Its frames over: the row stays, no longer lit (no ×), struck in its folder.
+        if (seen[i]!.cross && glyphSeg(row, name)?.t !== '× ') {
           if (seen[i]!.left < 0) seen[i]!.left = n
           return
         }
-        expect(seen[i]!.left).toBe(-1)
         if (glyphSeg(row, name)?.t === '× ') seen[i]!.cross = true
         if (red.has(nameSeg(row, name)?.c)) seen[i]!.red = true
       })
@@ -2117,10 +2117,15 @@ test(`live: an rm of three files ${how} plays three gone steps, each row kept as
     expect(seen.every(x => x.cross && x.red && x.left > 0)).toBe(true)
     expect(seen[1]!.left).toBeGreaterThan(seen[0]!.left)
     expect(seen[2]!.left).toBeGreaterThan(seen[1]!.left)
-    // Gone for good: no row, no ghost, nothing lit in their place.
-    await clock.advance(10 * TICK)
+    // Gone from disk, kept for the session: a struck row in its folder, out of clicks, with the red dot of its removal.
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
     const rows = await specs(ui)
-    expect(names.every(name => rowOf(rows, name) === undefined)).toBe(true)
+    for (const name of names) {
+      expect(rowOf(rows, name)?.id).toBe('')
+      expect(nameSeg(rowOf(rows, name), name).s).toBe(true)
+      expect(dotsOf(rowOf(rows, name))).toEqual([{ t: DOT, c: RAMPS.red![3] }])
+    }
   } finally {
     DIRS[WSL_ROOT] = root
   }

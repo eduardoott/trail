@@ -946,6 +946,13 @@ async function play($: EngineInterface, s: Instance, scope: 'last' | 'all'): Pro
   else await playClassic($, s, steps, token)
 }
 
+// The files whose last step in the trail removed them.
+function goneOf(trail: Step[]): string[] {
+  const last = new Map<string, boolean>()
+  for (const step of trail) for (const p of Object.keys(step.tones)) last.set(p, Boolean(step.files?.[p]?.gone))
+  return [...last].filter(([, gone]) => gone).map(([p]) => p)
+}
+
 // The rows the pane draws: the replay's hidden rows out, its ghosts in among their old siblings. A ghost whose row
 // the tree still has (the live light plays a removal before the reload takes the row out) draws as that row.
 function paneRows(s: Instance, t: FileTree, r: Player | null): { rows: Row[]; ghosts: Set<string>; phantoms: Set<string> } {
@@ -955,7 +962,9 @@ function paneRows(s: Instance, t: FileTree, r: Player | null): { rows: Row[]; gh
   const rows = hidden?.size ? all.filter(x => !hidden.has(x.node.id)) : all
   const ghosts = new Set<string>()
   const phantoms = new Set<string>()
-  const extra = [...(r?.ghosts ?? []), ...(r?.phantoms ?? [])]
+  // Outside a replay, a file the session removed stays as a ghost: once gone from disk, nothing else tells it was there.
+  const kept = r && 'index' in r ? [] : goneOf(s.trail)
+  const extra = [...new Set([...(r?.ghosts ?? []), ...(r?.phantoms ?? []), ...kept])]
   const there = extra.length ? new Set(all.map(x => x.node.id)) : null
   for (const g of extra) {
     if (there?.has(g) || hidden?.has(g)) continue
@@ -967,7 +976,7 @@ function paneRows(s: Instance, t: FileTree, r: Player | null): { rows: Row[]; gh
     let i = at + 1
     while (i < rows.length && rows[i]!.depth >= depth && !(rows[i]!.depth === depth && siblingOrder(node, rows[i]!.node) < 0)) i++
     rows.splice(i, 0, { node, depth, open: false })
-    if (r?.ghosts.includes(g)) ghosts.add(g)
+    if (r?.ghosts.includes(g) || kept.includes(g)) ghosts.add(g)
     else phantoms.add(g)
   }
   return { rows, ghosts, phantoms }
@@ -2260,12 +2269,14 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const k = rp.shade[id]
     return { ...spec, left: [{ t: '▌', c: k ? rampFor(id)[k - 1] : theme.muted }, ...spec.left], bg: barBg }
   }
+  // The dots of a file: over the session's steps, or the steps the replay played so far.
+  const dotsFor = (id: string) => dotSegs(history(s.replay ? s.replay.steps.slice(0, s.replay.index) : s.trail, id), dotsLimit, dotsOrder)
   const rowSpec = (r: (typeof rows)[number]): RowSpec => {
     const n = r.node
     // id '' keeps the ghost out of clicks, copy and the cursor.
     if (ghosts.has(n.id)) {
       const c = tint(n.id) ?? theme.urgent
-      return barred({ id: '', left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, iconOf(n.id) ?? { t: '· ', c }, { t: n.name, c, s: true }, ...chipsOf(n.id)], right: [] }, n.id)
+      return barred({ id: '', left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, iconOf(n.id) ?? { t: '· ', c }, { t: n.name, c, s: true }, ...chipsOf(n.id)], right: dotsFor(n.id) }, n.id)
     }
     // A hidden stretch of a folded folder: its count at the children's glyph column, nothing else.
     if (n.kind === 'fold') return barred({ id: n.id, left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, { t: `… ${enUS.format(r.count ?? 0)} files`, c: theme.muted }], right: [] }, n.id)
@@ -2308,7 +2319,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const locText = `${adds ? ` +${loc![0]}` : ''}${dels ? ` -${loc![1]}` : ''}`
     const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
     // The dots of a file: over the session's steps, or the steps the replay played so far.
-    const dots = n.kind === 'dir' ? [] : dotSegs(history(s.replay ? s.replay.steps.slice(0, s.replay.index) : s.trail, n.id), dotsLimit, dotsOrder)
+    const dots = n.kind === 'dir' ? [] : dotsFor(n.id)
     const dotsText = dots.map(d => d.t).join('')
     const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
     const countsText = dirCounts.map(c => c.t).join('')

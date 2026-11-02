@@ -29,10 +29,10 @@ test('born, gone and a shell write without counts are their own kinds', () => {
   expect(history(trail, 'a')).toEqual(['born', 'shell', 'gone'])
 })
 
-test('time order draws the oldest dot on the right, each dot in its tone with a space before it', () => {
+test('time order draws the oldest dot on the right, each dot in its tone, glued together', () => {
   expect(dotSegs(['read', 'edit'], 8, 'time')).toEqual([
-    { t: ` ${DOT}`, c: tone('orange') },
-    { t: ` ${DOT}`, c: tone('purple') },
+    { t: DOT, c: tone('orange') },
+    { t: DOT, c: tone('purple') },
   ])
   expect(dotSegs([], 8, 'time')).toEqual([])
 })
@@ -45,14 +45,14 @@ test('kind order groups reads on the right, then edits, then born, gone and shel
 test('past the limit the row goes compact: one dot a kind with its count, in kind order', () => {
   const kinds = [...Array(9).fill('read'), 'edit'] as const
   expect(dotSegs([...kinds], 8, 'time')).toEqual([
-    { t: ` ${DOT}`, c: tone('orange') },
+    { t: DOT, c: tone('orange') },
     { t: ` ${DOT}(9)`, c: tone('purple') },
   ])
 })
 
 test('compact always groups and off draws nothing', () => {
   expect(dotSegs(['read', 'read', 'edit'], 'compact', 'time')).toEqual([
-    { t: ` ${DOT}`, c: tone('orange') },
+    { t: DOT, c: tone('orange') },
     { t: ` ${DOT}(2)`, c: tone('purple') },
   ])
   expect(dotSegs(['read', 'read', 'edit'], 'off', 'time')).toEqual([])

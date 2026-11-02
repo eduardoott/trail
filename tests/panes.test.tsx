@@ -2793,7 +2793,7 @@ test('the tool still runs when the session cwd rejects before a command in an op
 
 // The dots: one per thing Claude did to the file over the session, before the date column.
 import { DOT } from '../hooks/dots'
-const dotsOf = (row: any) => (row?.right ?? []).filter((s: any) => s.t.startsWith(` ${DOT}`))
+const dotsOf = (row: any) => (row?.right ?? []).filter((s: any) => s.t.trimStart().startsWith(DOT))
 
 test('a Read and an Edit leave two dots before the date, the read on the right, kept past the end of the answer', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
@@ -2804,9 +2804,9 @@ test('a Read and an Edit leave two dots before the date, the read on the right, 
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.advance(10_000)
   const row = rowOf(await specs(ui), 'wsl-only.md')
-  expect(dotsOf(row)).toEqual([{ t: ` ${DOT}`, c: RAMPS.orange![3] }, { t: ` ${DOT}`, c: RAMPS.purple![3] }])
+  expect(dotsOf(row)).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.purple![3] }])
   // The dots come before the date column.
-  expect(row.right.findIndex((s: any) => s.t.startsWith(` ${DOT}`))).toBeLessThan(row.right.findIndex((s: any) => /\d/.test(s.t) && !s.t.startsWith(` ${DOT}`)))
+  expect(row.right.findIndex((s: any) => s.t.trimStart().startsWith(DOT))).toBeLessThan(row.right.findIndex((s: any) => /\d/.test(s.t) && !s.t.trimStart().startsWith(DOT)))
 })
 
 test('dots compact draws one dot a kind with its count', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'compact' }, timeoutMs: 30_000 }, async ($, on) => {
@@ -2818,7 +2818,7 @@ test('dots compact draws one dot a kind with its count', { options: { sessionTab
   await command(clock, gate, read('wsl-only.md'))
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.advance(10_000)
-  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: ` ${DOT}(2)`, c: RAMPS.purple![3] }])
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: `${DOT}(2)`, c: RAMPS.purple![3] }])
 })
 
 test('dots off draws no dot', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {

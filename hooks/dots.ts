@@ -3,7 +3,7 @@ import type { Seg } from './rows'
 import { RAMPS } from './git'
 import { KIND_RAMP, type Kind, kindOf, type Step } from './replay'
 
-export const DOT = '∙'
+export const DOT = '•'
 export type DotsLimit = number | 'compact' | 'off'
 export type DotsOrder = 'time' | 'kind'
 // Right to left when grouped by kind: reads against the date column, then edits, then the rest.
@@ -26,15 +26,15 @@ export function history(trail: Step[], file: string): Kind[] {
 // Tone 3 of the kind's ramp: the settled tone of a lit row.
 const toneOf = (kind: Kind): string => RAMPS[kind === 'shell' ? 'teal' : KIND_RAMP[kind]]![3]!
 
-// The segments of the dots, left to right, a space before each. Past the limit the row goes compact: one dot a
-// kind with its count, in kind order.
+// The segments of the dots, left to right, glued together. Past the limit the row goes compact: one dot a kind
+// with its count, a space between kinds.
 export function dotSegs(kinds: Kind[], limit: DotsLimit, order: DotsOrder): Seg[] {
   if (limit === 'off' || kinds.length === 0) return []
   if (limit === 'compact' || kinds.length > limit) {
     const n = new Map<Kind, number>()
     for (const k of kinds) n.set(k, (n.get(k) ?? 0) + 1)
-    return BY_KIND.filter(k => n.has(k)).map(k => ({ t: ` ${DOT}${(n.get(k) ?? 0) > 1 ? `(${n.get(k)})` : ''}`, c: toneOf(k) }))
+    return BY_KIND.filter(k => n.has(k)).map((k, i) => ({ t: `${i ? ' ' : ''}${DOT}${(n.get(k) ?? 0) > 1 ? `(${n.get(k)})` : ''}`, c: toneOf(k) }))
   }
   const ordered = order === 'kind' ? BY_KIND.flatMap(k => kinds.filter(x => x === k)) : [...kinds].reverse()
-  return ordered.map(k => ({ t: ` ${DOT}`, c: toneOf(k) }))
+  return ordered.map(k => ({ t: DOT, c: toneOf(k) }))
 }

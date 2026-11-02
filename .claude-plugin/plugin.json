@@ -1,6 +1,6 @@
 {
   "name": "trail",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Trail: a file tree tab per git repo, the session's and outside ones, that follows Claude and shows the trail of what it read and edited",
   "types": "./types/index.d.ts",
   "userConfig": {

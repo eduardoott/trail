@@ -32,6 +32,7 @@ In the terminal, the tab needs the fullscreen layout (`/tui fullscreen`) and at 
 /trail open <folder>          opens the tab of a repo
 /trail close <root>           closes the tab of that repo
 /trail forget <root | all>    forgets the permission given in the card
+/trail metrics                shows the hooks' latency and the render cost, with the Metrics setting on
 ```
 
 ## Settings
@@ -51,6 +52,7 @@ In `/config`, plugin section:
 | How the tab opens | `opening` | auto | or `card`, which asks permission first |
 | Dots | `dots` | 8 | dots before the right column, one per thing Claude did to the file; past this many the row goes compact (one a kind with its count); `compact` always groups, `off` hides them |
 | Dots order | `dotsOrder` | time | `time`: the order Claude did them, the first against the right column; `kind`: grouped by colour, reads against the column, then edits, then the rest |
+| Metrics | `metrics` | off | `on` measures each hook's latency and the tab's render cost; every 60 s they go to the debug log and to `~/.claude/mods-metrics/trail.json`, and `/trail metrics` shows them now |
 | Big folder | `bigFolder` | 200 | a folder with more files than this opens folded, showing only the files Claude touched, the ones changed in git and 3 neighbours of each, the rest as clickable "… N files" blocks; the count in the header opens the whole folder; 0 turns it off |
 
 ## Tests

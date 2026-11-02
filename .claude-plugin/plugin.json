@@ -131,6 +131,16 @@
         "time",
         "kind"
       ]
+    },
+    "metrics": {
+      "type": "string",
+      "title": "Metrics",
+      "description": "on: measures each hook's latency and the tab's render cost; every 60 s writes them to the debug log and to ~/.claude/mods-metrics/trail.json, and /trail metrics shows them now. off: measures nothing.",
+      "default": "off",
+      "options": [
+        "off",
+        "on"
+      ]
     }
   },
   "license": "MIT",

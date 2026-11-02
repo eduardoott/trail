@@ -41,6 +41,7 @@ import { inRepo, linuxOf, mentions, paneId, resolveRepo, titleOf, toUnc } from '
 import { type Blind, insideSession, shellBlind, shellReads, shellWrites, type Target, writeTargets } from './detect'
 import { type Card, CARD_ROWS, drawCard } from './card'
 import { type DotsLimit, type DotsOrder, dotSegs, folders, histories } from './dots'
+import { enable as enableMetrics, enabled as metricsOn, lines as metricsLines, measure, record as recordMetric, snapshot as metricsSnapshot } from './metrics'
 import { BRANCH_ROW, CATCH, type Frame, holdGit, type Kind, kindOf, lineDelta, LIVE, LIVE_QUEUE, namesOf, plan, rampOf, record, RUSH, splitStep, type Step, type StepFile, stepsFor, ticksOf, TIMING } from './replay'
 
 const THEME = { plugin: 'trail', key: 'theme' } as const
@@ -126,6 +127,8 @@ let opening: 'auto' | 'card' = 'auto'
 
 let themePoll: Timer | null = null
 let themeMtime: number | null = null
+const METRICS_EVERY_MS = 60_000
+let metricsFlush: Timer | null = null
 let lastPress = { key: '', at: 0 }
 let noNerd = false
 let activityId = 0
@@ -492,7 +495,11 @@ async function get($: EngineInterface, s: Instance): Promise<FileTree> {
 }
 
 async function put($: EngineInterface, s: Instance, fn: (t: FileTree) => FileTree): Promise<void> {
-  await update($, { ...TREE, id: s.id }, cur => fn({ ...emptyTree(''), ...cur }))
+  await update($, { ...TREE, id: s.id }, cur => {
+    const next = fn({ ...emptyTree(''), ...cur })
+    if (metricsOn) recordMetric('state:tree', JSON.stringify(next).length)
+    return next
+  })
 }
 
 function patch($: EngineInterface, s: Instance, fn: (t: FileTree) => Partial<FileTree>) {
@@ -2138,6 +2145,8 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   }
   const now = await $.clock.now()
   const live = (await activities($, s)).filter(a => now - a.at < (a.state === 'running' ? RUNNING_MAX_MS : ACTIVITY_TTL_MS))
+  // The last $ call of the draw: from here to the tree is the render's own cost, render:pure.
+  const pure0 = metricsOn ? performance.now() : 0
   const latest = [...live].reverse().find(a => a.state === 'running') ?? live[live.length - 1]
   const replayed = replayedGit(s.replay)
   // The live run of 2 files or more, while it plays: the one playing (or lit at once) of all queued since the queue was empty.
@@ -2448,7 +2457,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     )
   }
 
-  return (
+  const tree = (
     <Box flexDirection="column" minHeight={Math.max(1, props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
       <Box flexDirection="row">
         <Text bold color={theme.accent} wrap="truncate-start">
@@ -2563,6 +2572,8 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
       )}
     </Box>
   )
+  if (metricsOn) recordMetric('render:pure', performance.now() - pure0)
+  return tree
 }
 
 
@@ -2637,7 +2648,15 @@ function fileOf(e: object): string {
   return ''
 }
 
-const USAGE = 'usage: /trail [open <folder> | close <root> | forget <root | all>]'
+const USAGE = 'usage: /trail [open <folder> | close <root> | forget <root | all> | metrics]'
+
+const metricsFile = () => `${home}/.claude/mods-metrics/trail.json`
+
+// Every 60 s while metrics are on: the table to the debug log, the numbers to the file, each line led by the plugin's name there.
+async function flushMetrics($: EngineInterface): Promise<void> {
+  for (const line of metricsLines()) $.ui.log(line, { to: 'debug' })
+  await $.fs.write(metricsFile(), JSON.stringify(metricsSnapshot(), null, 2)).catch(() => undefined)
+}
 
 // A plain reopen is tried first so the prompt keeps the keyboard; focus is the fallback.
 async function bringToFront($: EngineInterface, s: Instance): Promise<void> {
@@ -2864,13 +2883,16 @@ export const register: Register = (on, options) => {
   dotsOrder = options?.dotsOrder === 'kind' ? 'kind' : 'time'
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
   sizeDefault = options?.column === 'size'
-  on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'trail', description: 'File tree tabs per git repo, the session\'s and outside ones; args: [open <folder> | close <root> | forget <root | all>]' })
+  enableMetrics(options?.metrics === 'on')
+  on('session.start', async ($, e, next) => measure('session.start', async mark => {
+    await $.command.register({ name: 'trail', description: 'File tree tabs per git repo, the session\'s and outside ones; args: [open <folder> | close <root> | forget <root | all> | metrics]' })
     const windows = (await $.env.get('OS')) === 'Windows_NT'
     useDrives(windows)
     startCwd = (await $.state.get(START_CWD)).value || posix(e.cwd)
     await $.state.set(START_CWD, startCwd)
     home = posix(((await $.env.get('HOME')) || (await $.env.get('USERPROFILE')) || '').replace(/[\\/]+$/, ''))
+    metricsFlush?.cancel()
+    metricsFlush = metricsOn ? $.clock.every(METRICS_EVERY_MS, () => void flushMetrics($)) : null
     void (async () => {
       pointer = await finePointerOk($)
       const remote = Boolean((await $.env.get('SSH_CONNECTION')) || (await $.env.get('SSH_TTY')))
@@ -2891,10 +2913,10 @@ export const register: Register = (on, options) => {
       }
       await openSessionTab($, e.cwd)
     })()
-    return next(e)
-  })
+    return mark(next(e))
+  }))
 
-  on('command.run', { command: 'trail' }, async ($, e) => {
+  on('command.run', { command: 'trail' }, async ($, e) => measure('command.run', async () => {
     const [verb = '', ...rest] = (e.args ?? '').trim().split(/\s+/)
     const arg = rest.join(' ')
     if (!verb) {
@@ -2946,11 +2968,15 @@ export const register: Register = (on, options) => {
       await closeRepo($, id)
       return { text: 'Tab closed.' }
     }
+    if (verb === 'metrics') {
+      if (!metricsOn) return { text: 'Metrics are off: set Metrics to on in /config, trail section (the session reloads the mod with it).' }
+      return { text: [...metricsLines(), `Every 60 s the same goes to the debug log and to ${metricsFile()}.`].join('\n') }
+    }
     return { text: USAGE }
-  })
+  }))
 
-  on('tool.call', async ($, e, next) => {
-    const denied = await gate($, e as { tool: string } & Record<string, unknown>, next.signal)
+  on('tool.call', async ($, e, next) => measure('tool.call', async mark => {
+    const denied = await mark(gate($, e as { tool: string } & Record<string, unknown>, next.signal))
     if (denied) return denied
     // Calls sent together light together; the first of a new command puts out the last one's light.
     waiting = false
@@ -2977,13 +3003,13 @@ export const register: Register = (on, options) => {
         }
       }
       void lightEarly($, e, epoch, here)
-      if (!instances.size || (!command && !file)) return await next(e)
+      if (!instances.size || (!command && !file)) return await mark(next(e))
       if (file) {
         // What the write did, for the replay: lines gained and lost, and whether the file was born.
         const writes = e.tool !== 'Read' && [...instances.values()].some(inst => inRepo(inst.repo, file))
         const existed = writes && (await exists($, file))
         const before = writes && existed && e.tool === 'Write' ? await $.fs.read(file).catch(() => '') : ''
-        const result = await next(e)
+        const result = await mark(next(e))
         if (result.deny || result.isError) return result
         const tone = e.tool === 'Read' ? 'purple' : 'orange'
         let info: StepFile | null = null
@@ -3003,7 +3029,7 @@ export const register: Register = (on, options) => {
         return result
       }
       const hit = [...instances.values()].filter(touches)
-      if (!hit.length) return await next(e)
+      if (!hit.length) return await mark(next(e))
       const cwd = await cwdOf($)
       const since = await sinceNow($)
       const pending = await Promise.all(hit.map(inst => beforeBash($, inst, command)))
@@ -3029,7 +3055,7 @@ export const register: Register = (on, options) => {
       )
       let result: Awaited<ReturnType<typeof next>>
       try {
-        result = await next(e)
+        result = await mark(next(e))
       } catch (err) {
         await Promise.all(hit.map((inst, i) => failTool($, inst, pending[i] ?? null)))
         throw err
@@ -3039,7 +3065,7 @@ export const register: Register = (on, options) => {
     } finally {
       inFlight -= 1
     }
-  })
+  }))
 
   // The answer is in and the session waits for the person: nothing stays lit.
   on('classic.Stop', async ($, e, next) => {
@@ -3083,36 +3109,36 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  on('prompt.submit', async ($, e, next) => {
+  on('prompt.submit', async ($, e, next) => measure('prompt.submit', async mark => {
     turn += 1
     void $.state.set(TURN, turn)
     for (const inst of instances.values()) {
       void settleBackground($, inst, e.text)
       void sync($, inst)
     }
-    return next(e)
-  })
+    return mark(next(e))
+  }))
 
   on('prompt.attachment', async ($, e, next) => {
     for (const inst of instances.values()) void settleBackground($, inst, e.text)
     return next(e)
   })
 
-  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => measure('ui.render:Pane', async mark => {
     seen(e)
     if (e.requestId === CARD_ID) {
-      if (!held || (e.surface !== 'terminal' && e.surface !== 'desktop')) return next(e)
+      if (!held || (e.surface !== 'terminal' && e.surface !== 'desktop')) return mark(next(e))
       return drawCard($.ui.resolve(e), held)
     }
-    const inst = await instanceFor($, e.requestId)
-    if (!inst) return next(e)
-    return (await render($, inst, e)) ?? next(e)
-  })
+    const inst = await mark(instanceFor($, e.requestId))
+    if (!inst) return mark(next(e))
+    return (await render($, inst, e)) ?? mark(next(e))
+  }))
 
   // Where the card cannot get a pane of its own, it sits above the prompt on top of the other bands.
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => measure('ui.render:AbovePrompt', async mark => {
     seen(e)
-    const below = await next(e)
+    const below = await mark(next(e))
     if (!held || held.where !== 'band' || (e.surface !== 'terminal' && e.surface !== 'desktop')) return below
     const ui = $.ui.resolve(e)
     const mine = drawCard(ui, held)
@@ -3124,5 +3150,5 @@ export const register: Register = (on, options) => {
         {below}
       </Box>
     )
-  })
+  }))
 }

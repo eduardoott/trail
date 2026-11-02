@@ -2958,3 +2958,26 @@ test('a long name is cut with … so the name, its dots and the date fit the wid
     DIRS[WSL_ROOT] = root
   }
 })
+
+const metricsCmd = { command: 'trail', args: 'metrics', origin: { kind: 'person' }, presentation: { isFullscreen: true, columns: 200 } } as any
+
+test('with metrics on, a Read and a pane render count under tool.call and ui.render:Pane in /trail metrics', { options: { sessionTab: 'off', metrics: 'on' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await command(clock, gate, read())
+  await clock.settle()
+  await ui.drawn()
+  const out = JSON.stringify(await $.command.run(metricsCmd))
+  expect(out).toMatch(/tool\.call +[1-9]\d* /)
+  expect(out).toMatch(/ui\.render:Pane +[1-9]\d* /)
+  expect(out).toMatch(/render:pure +[1-9]\d* /)
+  expect(out).toMatch(/state:tree +[1-9]\d* /)
+  expect(out).toContain('mods-metrics/trail.json')
+})
+
+test('with metrics off, /trail metrics says they are off', { options: { sessionTab: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read } = await litWorld($, on)
+  await command(clock, gate, read())
+  const out = JSON.stringify(await $.command.run(metricsCmd))
+  expect(out).toContain('Metrics are off')
+  expect(out.includes('tool.call')).toBe(false)
+})

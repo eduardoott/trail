@@ -2269,8 +2269,9 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const k = rp.shade[id]
     return { ...spec, left: [{ t: '▌', c: k ? rampFor(id)[k - 1] : theme.muted }, ...spec.left], bg: barBg }
   }
-  // The dots of a file: over the session's steps, or the steps the replay played so far.
-  const played = s.replay ? s.replay.steps.slice(0, s.replay.index) : s.trail
+  // The dots of a file: over the session's steps, or the steps before the replay plus the ones it played so far.
+  const first = s.replay?.steps[0]?.epoch ?? 0
+  const played = s.replay ? [...s.trail.filter(one => one.epoch < first), ...s.replay.steps.slice(0, s.replay.index)] : s.trail
   const dotsFor = (id: string) => dotSegs(history(played, id), dotsLimit, dotsOrder)
   // A closed folder sums the files under it, always compact: one dot a kind with its count.
   const folderDots = (dir: string) => {

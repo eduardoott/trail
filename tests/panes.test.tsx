@@ -2883,3 +2883,28 @@ test('dots off draws no dot', { options: { sessionTab: 'off', replayAnimation: '
   await clock.advance(10_000)
   expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([])
 })
+
+test('▷ of the last answer keeps the dots of the earlier answers while it plays, and adds its own', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  const both = [{ t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.purple![3] }]
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'y' } as any)
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'three' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+  await ui.press({ key: 'replay-last' })
+  await clock.advance(10)
+  expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
+  // The read of the first answer stays while the second plays; the edit's dot is in from the start of its step.
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md')).some((d: any) => d.c === RAMPS.purple![3])).toBe(true)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+  await clock.advance(5 * TICK)
+  expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+  await clock.advance(10_000)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('■ 1/1')
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+})

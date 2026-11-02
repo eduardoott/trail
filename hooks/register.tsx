@@ -40,7 +40,7 @@ import {
 import { inRepo, linuxOf, mentions, paneId, resolveRepo, titleOf, toUnc } from './wsl'
 import { type Blind, insideSession, shellBlind, shellReads, shellWrites, type Target, writeTargets } from './detect'
 import { type Card, CARD_ROWS, drawCard } from './card'
-import { type DotsLimit, type DotsOrder, dotSegs, history } from './dots'
+import { type DotsLimit, type DotsOrder, dotSegs, folders, histories } from './dots'
 import { BRANCH_ROW, CATCH, type Frame, holdGit, type Kind, kindOf, lineDelta, LIVE, LIVE_QUEUE, namesOf, plan, rampOf, record, RUSH, splitStep, type Step, type StepFile, stepsFor, ticksOf, TIMING } from './replay'
 
 const THEME = { plugin: 'trail', key: 'theme' } as const
@@ -2272,12 +2272,12 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
   // The dots of a file: over the session's steps, or the steps before the replay plus the ones it played so far.
   const first = s.replay?.steps[0]?.epoch ?? 0
   const played = s.replay ? [...s.trail.filter(one => one.epoch < first), ...s.replay.steps.slice(0, s.replay.index)] : s.trail
-  const dotsFor = (id: string) => dotSegs(history(played, id), dotsLimit, dotsOrder)
+  // Every history in one pass a frame: a walk of the trail per row cost 50 ms a frame.
+  const hist = histories(played)
+  const sums = folders(hist, t.root)
+  const dotsFor = (id: string) => dotSegs(hist.get(id) ?? [], dotsLimit, dotsOrder)
   // A closed folder sums the files under it, always compact: one dot a kind with its count.
-  const folderDots = (dir: string) => {
-    const under = [...new Set(played.flatMap(one => Object.keys(one.tones)))].filter(p => p !== BRANCH_ROW && p !== dir && inside(dir, p))
-    return dotsLimit === 'off' ? [] : dotSegs(under.flatMap(p => history(played, p)), 'compact', dotsOrder)
-  }
+  const folderDots = (dir: string) => (dotsLimit === 'off' ? [] : dotSegs(sums.get(dir) ?? [], 'compact', dotsOrder))
   const rowSpec = (r: (typeof rows)[number]): RowSpec => {
     const n = r.node
     // id '' keeps the ghost out of clicks, copy and the cursor.

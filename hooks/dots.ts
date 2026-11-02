@@ -1,7 +1,8 @@
 // The dots after a file's name: one per thing Claude did to it, over the session's steps.
 import type { Seg } from './rows'
 import { RAMPS } from './git'
-import { KIND_RAMP, type Kind, kindOf, type Step } from './replay'
+import { BRANCH_ROW, KIND_RAMP, type Kind, kindOf, type Step } from './replay'
+import { ancestorsOf } from './tree'
 
 export const DOT = '•'
 
@@ -15,20 +16,44 @@ const BY_KIND: DotKind[] = ['commit', 'shell', 'gone', 'born', 'edit', 'read']
 // Merge, rebase and cherry-pick paint their rewritten files purple, the tone kindOf reads as a read.
 const REWRITERS = ['git merge', 'git rebase', 'git cherry-pick']
 
-// What the steps did to the file, oldest first. The same thing done again right after, inside one answer, is one dot.
-export function history(trail: Step[], file: string): DotKind[] {
-  const out: DotKind[] = []
-  let last: { turn: number; kind: DotKind } | null = null
+// What the steps did to every file they name, oldest first, in one pass over the trail (the render asks for every
+// row of every frame). The same thing done again right after, inside one answer, is one dot.
+export function histories(trail: Step[]): Map<string, DotKind[]> {
+  const out = new Map<string, DotKind[]>()
+  const last = new Map<string, { turn: number; kind: DotKind }>()
   for (const step of trail) {
-    if (!(file in step.tones)) continue
-    const base = kindOf(step, file)
     const names = step.names ?? []
-    // A step mixing a real Read with a merge is accepted as imprecise: the shell wins.
-    const kind: DotKind = base === 'shell' && step.tones[file] === 'green' ? (names.includes('git commit') ? 'commit' : 'shell')
-      : base === 'read' && REWRITERS.some(n => names.includes(n)) ? 'shell' : base
-    if (last && last.turn === step.turn && last.kind === kind) continue
-    out.push(kind)
-    last = { turn: step.turn, kind }
+    const commit = names.includes('git commit')
+    const rewrite = REWRITERS.some(n => names.includes(n))
+    for (const file of Object.keys(step.tones)) {
+      const base = kindOf(step, file)
+      // A step mixing a real Read with a merge is accepted as imprecise: the shell wins.
+      const kind: DotKind = base === 'shell' && step.tones[file] === 'green' ? (commit ? 'commit' : 'shell') : base === 'read' && rewrite ? 'shell' : base
+      const prev = last.get(file)
+      if (prev && prev.turn === step.turn && prev.kind === kind) continue
+      const kinds = out.get(file)
+      if (kinds) kinds.push(kind)
+      else out.set(file, [kind])
+      last.set(file, { turn: step.turn, kind })
+    }
+  }
+  return out
+}
+
+export function history(trail: Step[], file: string): DotKind[] {
+  return histories(trail).get(file) ?? []
+}
+
+// What a closed folder sums: the kinds of every file under it, up to the root (which has no row).
+export function folders(all: Map<string, DotKind[]>, root: string): Map<string, DotKind[]> {
+  const out = new Map<string, DotKind[]>()
+  for (const [file, kinds] of all) {
+    if (file === BRANCH_ROW) continue
+    for (const dir of ancestorsOf(file, root)) {
+      const sum = out.get(dir)
+      if (sum) sum.push(...kinds)
+      else out.set(dir, [...kinds])
+    }
   }
   return out
 }

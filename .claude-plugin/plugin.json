@@ -111,7 +111,7 @@
     "dots": {
       "type": "string",
       "title": "Dots",
-      "description": "The dots before the right column, one per thing Claude did to the file: purple read, orange edit, green new file, red removed, teal shell. The same thing done again in one answer is one dot. Past this many dots the row goes compact: one dot a kind with its count. compact: always one a kind. off: no dots.",
+      "description": "The dots before the right column, one per thing Claude did to the file: purple read, orange edit, green new file, red removed, teal shell. The same thing done again right after, inside one answer, is one dot. Past this many dots the row goes compact: one dot a kind with its count. compact: always one a kind. off: no dots.",
       "default": "8",
       "options": [
         "8",

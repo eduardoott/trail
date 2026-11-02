@@ -52,14 +52,14 @@ test('past the limit the row goes compact: one dot a kind with its count, in kin
   const kinds = [...Array(9).fill('read'), 'edit'] as const
   expect(dotSegs([...kinds], 8, 'time')).toEqual([
     { t: DOT, c: tone('orange') },
-    { t: ` ${DOT}(9)`, c: tone('purple') },
+    { t: ` ${DOT}⁽⁹⁾`, c: tone('purple') },
   ])
 })
 
 test('compact always groups and off draws nothing', () => {
   expect(dotSegs(['read', 'read', 'edit'], 'compact', 'time')).toEqual([
     { t: DOT, c: tone('orange') },
-    { t: ` ${DOT}(2)`, c: tone('purple') },
+    { t: ` ${DOT}⁽²⁾`, c: tone('purple') },
   ])
   expect(dotSegs(['read', 'read', 'edit'], 'off', 'time')).toEqual([])
 })

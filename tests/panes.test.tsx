@@ -2823,7 +2823,7 @@ test('dots compact draws one dot a kind with its count', { options: { sessionTab
   await command(clock, gate, read('wsl-only.md'))
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.advance(10_000)
-  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: `${DOT}(2)`, c: RAMPS.purple![3] }])
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: `${DOT}⁽²⁾`, c: RAMPS.purple![3] }])
 })
 
 test('a commit leaves a dot on each file it committed, after the answer and after its replay', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
@@ -2854,7 +2854,7 @@ test('a closed folder sums the dots of the files under it, one a kind with its c
     await clock.advance(10_000)
     expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([])
     await ui.press({ key: 'collapse' })
-    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: ` ${DOT}(2)`, c: RAMPS.purple![3] }])
+    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: ` ${DOT}⁽²⁾`, c: RAMPS.purple![3] }])
   } finally {
     DIRS[`${WSL_ROOT}/database`] = db
   }

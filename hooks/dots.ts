@@ -4,6 +4,10 @@ import { RAMPS } from './git'
 import { KIND_RAMP, type Kind, kindOf, type Step } from './replay'
 
 export const DOT = '•'
+// The count is drawn in superscript: a terminal has no smaller font, and it keeps the dot the loud part.
+const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+const small = (n: number) => `⁽${[...String(n)].map(d => SUP[Number(d)]).join('')}⁾`
+
 export type DotsLimit = number | 'compact' | 'off'
 export type DotsOrder = 'time' | 'kind'
 // A commit lights its files green: a dot of its own, not a shell write.
@@ -36,7 +40,7 @@ export function dotSegs(kinds: DotKind[], limit: DotsLimit, order: DotsOrder): S
   if (limit === 'compact' || kinds.length > limit) {
     const n = new Map<DotKind, number>()
     for (const k of kinds) n.set(k, (n.get(k) ?? 0) + 1)
-    return BY_KIND.filter(k => n.has(k)).map((k, i) => ({ t: `${i ? ' ' : ''}${DOT}${(n.get(k) ?? 0) > 1 ? `(${n.get(k)})` : ''}`, c: toneOf(k) }))
+    return BY_KIND.filter(k => n.has(k)).map((k, i) => ({ t: `${i ? ' ' : ''}${DOT}${(n.get(k) ?? 0) > 1 ? small(n.get(k)!) : ''}`, c: toneOf(k) }))
   }
   const ordered = order === 'kind' ? BY_KIND.flatMap(k => kinds.filter(x => x === k)) : [...kinds].reverse()
   return ordered.map(k => ({ t: DOT, c: toneOf(k) }))

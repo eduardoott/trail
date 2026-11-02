@@ -12,14 +12,20 @@ export type DotKind = Kind | 'commit'
 // Right to left when grouped by kind: reads against the date column, then edits, then the rest.
 const BY_KIND: DotKind[] = ['commit', 'shell', 'gone', 'born', 'edit', 'read']
 
-// What the steps did to the file, oldest first. The same thing done again inside one answer is one dot.
+// Merge, rebase and cherry-pick paint their rewritten files purple, the tone kindOf reads as a read.
+const REWRITERS = ['git merge', 'git rebase', 'git cherry-pick']
+
+// What the steps did to the file, oldest first. The same thing done again right after, inside one answer, is one dot.
 export function history(trail: Step[], file: string): DotKind[] {
   const out: DotKind[] = []
   let last: { turn: number; kind: DotKind } | null = null
   for (const step of trail) {
     if (!(file in step.tones)) continue
     const base = kindOf(step, file)
-    const kind: DotKind = base === 'shell' && step.tones[file] === 'green' ? 'commit' : base
+    const names = step.names ?? []
+    // A step mixing a real Read with a merge is accepted as imprecise: the shell wins.
+    const kind: DotKind = base === 'shell' && step.tones[file] === 'green' ? (names.includes('git commit') ? 'commit' : 'shell')
+      : base === 'read' && REWRITERS.some(n => names.includes(n)) ? 'shell' : base
     if (last && last.turn === step.turn && last.kind === kind) continue
     out.push(kind)
     last = { turn: step.turn, kind }

@@ -3,7 +3,7 @@ import { RAMPS } from '../hooks/git'
 import { DOT, dotSegs, history } from '../hooks/dots'
 import type { Step, StepFile } from '../hooks/replay'
 
-const step = (epoch: number, turn: number, tones: Record<string, string>, files?: Record<string, StepFile>): Step => ({ epoch, turn, tones, ...(files ? { files } : {}) })
+const step = (epoch: number, turn: number, tones: Record<string, string>, files?: Record<string, StepFile>, names?: string[]): Step => ({ epoch, turn, tones, ...(files ? { files } : {}), ...(names ? { names } : {}) })
 const tone = (ramp: string) => RAMPS[ramp]![3]
 
 test('history lists what each command did to the file, oldest first', () => {
@@ -30,9 +30,20 @@ test('born, gone and a shell write without counts are their own kinds', () => {
 })
 
 test('a commit is its own green dot, even after a shell write in the same answer', () => {
-  const trail = [step(1, 1, { a: 'purple' }), step(2, 1, { a: 'orange' }), step(3, 1, { a: 'green' })]
+  const trail = [step(1, 1, { a: 'purple' }), step(2, 1, { a: 'orange' }), step(3, 1, { a: 'green' }, undefined, ['git commit'])]
   expect(history(trail, 'a')).toEqual(['read', 'shell', 'commit'])
   expect(dotSegs(['commit'], 8, 'time')).toEqual([{ t: DOT, c: tone('green') }])
+})
+
+test('a staged file is a shell dot, the commit dot waits for git commit', () => {
+  expect(history([step(1, 1, { a: 'green' }, undefined, ['git add'])], 'a')).toEqual(['shell'])
+  expect(history([step(1, 1, { a: 'green' }, undefined, ['git add']), step(2, 2, { a: 'green' }, undefined, ['git commit'])], 'a')).toEqual(['shell', 'commit'])
+  expect(history([step(1, 1, { a: 'green' }, undefined, ['git add', 'git commit'])], 'a')).toEqual(['commit'])
+})
+
+test('a file rewritten by a merge, rebase or cherry-pick is a shell dot, not a read', () => {
+  for (const name of ['git merge', 'git rebase', 'git cherry-pick']) expect(history([step(1, 1, { a: 'purple' }, undefined, [name])], 'a')).toEqual(['shell'])
+  expect(history([step(1, 1, { a: 'purple' }, undefined, ['Read'])], 'a')).toEqual(['read'])
 })
 
 test('time order draws the oldest dot on the right, each dot in its tone, glued together', () => {
@@ -54,6 +65,11 @@ test('past the limit the row goes compact: one dot a kind with its count, in kin
     { t: DOT, c: tone('orange') },
     { t: ` ${DOT}`, c: tone('purple') }, { t: '9', c: RAMPS.purple![1] },
   ])
+})
+
+test('exactly the limit stays single dots, one past it goes compact', () => {
+  expect(dotSegs(Array(8).fill('read'), 8, 'time')).toEqual(Array(8).fill({ t: DOT, c: tone('purple') }))
+  expect(dotSegs(Array(9).fill('read'), 8, 'time')).toEqual([{ t: DOT, c: tone('purple') }, { t: '9', c: RAMPS.purple![1] }])
 })
 
 test('compact always groups and off draws nothing', () => {

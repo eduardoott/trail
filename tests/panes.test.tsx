@@ -2798,7 +2798,7 @@ test('the tool still runs when the session cwd rejects before a command in an op
 
 // The dots: one per thing Claude did to the file over the session, before the date column.
 import { DOT } from '../hooks/dots'
-const dotsOf = (row: any) => (row?.right ?? []).filter((s: any) => s.t.trimStart().startsWith(DOT))
+const dotsOf = (row: any) => (row?.right ?? []).filter((s: any) => s.t.trimStart().startsWith(DOT) || /^\d+$/.test(s.t))
 
 test('a Read and an Edit leave two dots before the date, the read on the right, kept past the end of the answer', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
   const { clock, gate, read, ui } = await litWorld($, on)
@@ -2823,7 +2823,7 @@ test('dots compact draws one dot a kind with its count', { options: { sessionTab
   await command(clock, gate, read('wsl-only.md'))
   await $.classic.Stop({ stop_hook_active: false } as any)
   await clock.advance(10_000)
-  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: `${DOT}⁽²⁾`, c: RAMPS.purple![3] }])
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: DOT, c: RAMPS.purple![3] }, { t: '2', c: RAMPS.purple![1] }])
 })
 
 test('a commit leaves a dot on each file it committed, after the answer and after its replay', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
@@ -2854,7 +2854,7 @@ test('a closed folder sums the dots of the files under it, one a kind with its c
     await clock.advance(10_000)
     expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([])
     await ui.press({ key: 'collapse' })
-    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: ` ${DOT}⁽²⁾`, c: RAMPS.purple![3] }])
+    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: ` ${DOT}`, c: RAMPS.purple![3] }, { t: '2', c: RAMPS.purple![1] }])
   } finally {
     DIRS[`${WSL_ROOT}/database`] = db
   }

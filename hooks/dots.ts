@@ -4,9 +4,6 @@ import { RAMPS } from './git'
 import { KIND_RAMP, type Kind, kindOf, type Step } from './replay'
 
 export const DOT = '•'
-// The count is drawn in superscript: a terminal has no smaller font, and it keeps the dot the loud part.
-const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹'
-const small = (n: number) => `⁽${[...String(n)].map(d => SUP[Number(d)]).join('')}⁾`
 
 export type DotsLimit = number | 'compact' | 'off'
 export type DotsOrder = 'time' | 'kind'
@@ -30,8 +27,9 @@ export function history(trail: Step[], file: string): DotKind[] {
   return out
 }
 
-// Tone 3 of the kind's ramp: the settled tone of a lit row.
-const toneOf = (kind: DotKind): string => RAMPS[kind === 'shell' ? 'teal' : kind === 'commit' ? 'green' : KIND_RAMP[kind]]![3]!
+// Tone 3 of the kind's ramp: the settled tone of a lit row. The count beside a grouped dot takes tone 1: a terminal
+// has no smaller font, superscript read too small and askew, so the count is quieter instead.
+const toneOf = (kind: DotKind, at = 3): string => RAMPS[kind === 'shell' ? 'teal' : kind === 'commit' ? 'green' : KIND_RAMP[kind]]![at]!
 
 // The segments of the dots, left to right, glued together. Past the limit the row goes compact: one dot a kind
 // with its count, a space between kinds.
@@ -40,7 +38,10 @@ export function dotSegs(kinds: DotKind[], limit: DotsLimit, order: DotsOrder): S
   if (limit === 'compact' || kinds.length > limit) {
     const n = new Map<DotKind, number>()
     for (const k of kinds) n.set(k, (n.get(k) ?? 0) + 1)
-    return BY_KIND.filter(k => n.has(k)).map((k, i) => ({ t: `${i ? ' ' : ''}${DOT}${(n.get(k) ?? 0) > 1 ? small(n.get(k)!) : ''}`, c: toneOf(k) }))
+    return BY_KIND.filter(k => n.has(k)).flatMap((k, i) => {
+      const dot = { t: `${i ? ' ' : ''}${DOT}`, c: toneOf(k) }
+      return n.get(k)! > 1 ? [dot, { t: String(n.get(k)), c: toneOf(k, 1) }] : [dot]
+    })
   }
   const ordered = order === 'kind' ? BY_KIND.flatMap(k => kinds.filter(x => x === k)) : [...kinds].reverse()
   return ordered.map(k => ({ t: DOT, c: toneOf(k) }))

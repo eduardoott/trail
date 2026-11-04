@@ -67,3 +67,15 @@ test('unfold opens one block and flat opens the whole folder', () => {
   expect(folds(opened)).toEqual([763])
   expect(under(bigTree(1533, [], { flat: [DIR] }), ctx).length).toBe(1533)
 })
+
+test('dots only keeps the touched files and their folders, git changes out', () => {
+  const t = bigTree(1533, [entry('sub', 'dir')], { git: { [file(1000)]: 'M' }, onlyDots: true })
+  const all = visibleRows(t, { touched: new Set([file(5), file(766)]), limit: 200 })
+  expect(files(all)).toEqual([name(5), name(766)])
+  expect(all.filter(r => r.node.kind === 'dir').map(r => r.node.name)).toEqual(['database', '40-procedure'])
+  expect(folds(all)).toEqual([])
+})
+
+test('dots only with nothing touched shows nothing', () => {
+  expect(visibleRows(bigTree(10, [], { onlyDots: true }), { touched: new Set(), limit: 200 })).toEqual([])
+})

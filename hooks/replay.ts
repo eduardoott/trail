@@ -199,13 +199,13 @@ export function kindOf(step: Step, file: string): Kind {
   return 'shell'
 }
 
+// The ramp of each kind but shell, whose tone the step gives.
+export const KIND_RAMP: Record<Exclude<Kind, 'shell'>, string> = { born: 'green', gone: 'red', read: 'purple', edit: 'orange' }
+
 // The 5 tone ramp of a file: a shell edit (orange without counts) goes teal.
 export function rampOf(step: Step, file: string): string {
   const kind = kindOf(step, file)
-  if (kind === 'born') return 'green'
-  if (kind === 'gone') return 'red'
-  if (kind === 'read') return 'purple'
-  if (kind === 'edit') return 'orange'
+  if (kind !== 'shell') return KIND_RAMP[kind]
   const tone = step.tones[file] ?? 'teal'
   return tone === 'orange' ? 'teal' : tone
 }

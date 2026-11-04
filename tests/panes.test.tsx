@@ -214,7 +214,11 @@ test('the ± button keeps only what git counts as changed, opening the folders t
     expect(JSON.stringify(await ui.drawn())).toContain('changed only')
     await ui.press({ key: 'changed' })
     await clock.settle()
+    expect(JSON.stringify(await ui.drawn())).toContain('dots only')
+    await ui.press({ key: 'changed' })
+    await clock.settle()
     expect(JSON.stringify(await ui.drawn())).not.toContain('changed only')
+    expect(JSON.stringify(await ui.drawn())).not.toContain('dots only')
     expect(JSON.stringify(await ui.drawn({ in: 'rows' }))).not.toContain('intacto-')
   } finally {
     delete DIRS[src]
@@ -626,7 +630,7 @@ test('counters count up from zero during the icon and go back to the git numbers
 })
 
 // The file is gone from the tree after the rm; its step draws it struck through in its old place,
-// and it leaves the list on the settle.
+// and it leaves the list on the settle; out of the replay it stays as a kept ghost.
 test('a shell rm records gone, and the replay shows a struck ghost that leaves on the settle', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   try {
@@ -640,7 +644,7 @@ test('a shell rm records gone, and the replay shows a struck ghost that leaves o
     await call
     await $.classic.Stop({ stop_hook_active: false } as any)
     await clock.advance(10_000)
-    expect(await rows()).not.toContain('wsl-only.md')
+    expect(rowOf(await specs(ui), 'wsl-only.md')?.id).toBe('')
     await ui.press({ key: 'replay-last' })
     await clock.advance(10)
     expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
@@ -657,7 +661,7 @@ test('a shell rm records gone, and the replay shows a struck ghost that leaves o
     expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
     await clock.advance(4 * TICK)
     expect(JSON.stringify(await ui.drawn())).not.toContain('■ 1/1')
-    expect(await rows()).not.toContain('wsl-only.md')
+    expect(rowOf(await specs(ui), 'wsl-only.md')?.id).toBe('')
   } finally {
     DIRS[WSL_ROOT] = root
   }
@@ -704,7 +708,8 @@ test('the window follows the bar only when it leaves the band', { options: { ses
 })
 
 // 7.7: ■ puts out the bar, the icon, the tones and the rows still hidden at once, and no timer outlives it.
-test('■ in the middle of a step clears the bar, the icon, the tones and the hidden rows in one go', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
+// dots off: the dot keeps its tone past the stop, and this test is about the replay's tones alone.
+test('■ in the middle of a step clears the bar, the icon, the tones and the hidden rows in one go', { options: { sessionTab: 'off', replayAnimation: 'modern', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
   const db = DIRS[`${WSL_ROOT}/database`]!
   DIRS[`${WSL_ROOT}/database`] = [['a.sql', 'file'], ...db]
   try {
@@ -2077,7 +2082,7 @@ test('live: a shell loop writing through a variable plays each new file as born,
 const three = MANY.slice(0, 3)
 const threeNames = three.map(([name]) => name)
 for (const [how, command] of [['spelled out', `rm ${threeNames.map(name => `'${atWsl(name)}'`).join(' ')}`], ['as a glob', `rm ${WSL_ROOT}/a0*.md`]] as const)
-test(`live: an rm of three files ${how} plays three gone steps, each row kept as a ghost through its frames and gone after`, { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
+test(`live: an rm of three files ${how} plays three gone steps, each row kept as a ghost through its frames, then kept struck with its red dot`, { options: LIVE_OPTIONS, timeoutMs: 30_000 }, async ($, on) => {
   const root = DIRS[WSL_ROOT]!
   const names = threeNames
   DIRS[WSL_ROOT] = [...root, ...three]
@@ -2103,11 +2108,11 @@ test(`live: an rm of three files ${how} plays three gone steps, each row kept as
       const rows = await specs(ui)
       names.forEach((name, i) => {
         const row = rowOf(rows, name)
-        if (!row) {
+        // Its frames over: the row stays, no longer lit (no ×), struck in its folder.
+        if (seen[i]!.cross && glyphSeg(row, name)?.t !== '× ') {
           if (seen[i]!.left < 0) seen[i]!.left = n
           return
         }
-        expect(seen[i]!.left).toBe(-1)
         if (glyphSeg(row, name)?.t === '× ') seen[i]!.cross = true
         if (red.has(nameSeg(row, name)?.c)) seen[i]!.red = true
       })
@@ -2116,10 +2121,15 @@ test(`live: an rm of three files ${how} plays three gone steps, each row kept as
     expect(seen.every(x => x.cross && x.red && x.left > 0)).toBe(true)
     expect(seen[1]!.left).toBeGreaterThan(seen[0]!.left)
     expect(seen[2]!.left).toBeGreaterThan(seen[1]!.left)
-    // Gone for good: no row, no ghost, nothing lit in their place.
-    await clock.advance(10 * TICK)
+    // Gone from disk, kept for the session: a struck row in its folder, out of clicks, with the red dot of its removal.
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
     const rows = await specs(ui)
-    expect(names.every(name => rowOf(rows, name) === undefined)).toBe(true)
+    for (const name of names) {
+      expect(rowOf(rows, name)?.id).toBe('')
+      expect(nameSeg(rowOf(rows, name), name).s).toBe(true)
+      expect(dotsOf(rowOf(rows, name))).toEqual([{ t: DOT, c: RAMPS.red![3] }])
+    }
   } finally {
     DIRS[WSL_ROOT] = root
   }
@@ -2787,5 +2797,168 @@ test('the tool still runs when the session cwd rejects before a command in an op
     expect(JSON.stringify(result)).toContain('tool-ran')
   } finally {
     faults.cwd = false
+  }
+})
+
+// The dots: one per thing Claude did to the file over the session, before the date column.
+import { DOT } from '../hooks/dots'
+const dotsOf = (row: any) => (row?.right ?? []).filter((s: any) => s.t.trimStart().startsWith(DOT) || /^\d+$/.test(s.t))
+
+test('a Read and an Edit leave two dots before the date, the read on the right, kept past the end of the answer', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await command(clock, gate, read('wsl-only.md'))
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'three' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  const row = rowOf(await specs(ui), 'wsl-only.md')
+  expect(dotsOf(row)).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.purple![3] }])
+  // The dots come before the date column.
+  expect(row.right.findIndex((s: any) => s.t.trimStart().startsWith(DOT))).toBeLessThan(row.right.findIndex((s: any) => /\d/.test(s.t) && !s.t.trimStart().startsWith(DOT)))
+})
+
+test('dots compact draws one dot a kind with its count', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'compact' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'y' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: DOT, c: RAMPS.purple![3] }, { t: '2', c: RAMPS.purple![1] }])
+})
+
+test('a commit leaves a dot on each file it committed, after the answer and after its replay', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  git.tree = 'wsl-only.md '
+  try {
+    const { clock, gate, ui } = await litWorld($, on)
+    await $.prompt.submit({ text: 'x' } as any)
+    gate.result = { result: { text: 'ok', isError: false, gitOperation: { commit: { sha: 'abc1234def' } } } }
+    await command(clock, gate, $.tool.call({ tool: 'Bash', command: 'git -C /home/user/my-repo add wsl-only.md && git -C /home/user/my-repo commit -m x' } as any))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: DOT, c: RAMPS.green![3] }])
+  } finally {
+    git.tree = ''
+  }
+})
+
+test('a closed folder sums the dots of the files under it, one a kind with its count; open, it draws none', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const db = DIRS[`${WSL_ROOT}/database`]!
+  DIRS[`${WSL_ROOT}/database`] = [['a.sql', 'file'], ...db]
+  try {
+    const { clock, gate, read, ui } = await litWorld($, on)
+    await $.prompt.submit({ text: 'x' } as any)
+    await command(clock, gate, read('database\\schema.sql'))
+    await command(clock, gate, read('database\\a.sql'))
+    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('database/a.sql'), old_string: 'a', new_string: 'b' } as any))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([])
+    await ui.press({ key: 'collapse' })
+    expect(dotsOf(rowOf(await specs(ui), 'database'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: ` ${DOT}`, c: RAMPS.purple![3] }, { t: '2', c: RAMPS.purple![1] }])
+  } finally {
+    DIRS[`${WSL_ROOT}/database`] = db
+  }
+})
+
+test('dots order kind groups the reads against the date column, then the edits, whatever the order they happened in', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dotsOrder: 'kind' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'three' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'y' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'z' } as any)
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'three', new_string: 'four' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([{ t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.purple![3] }])
+})
+
+test('dots off draws no dot', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant', dots: 'off' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual([])
+})
+
+test('▷ of the last answer keeps the dots of the earlier answers while it plays, and adds its own', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, read, ui } = await litWorld($, on)
+  const both = [{ t: DOT, c: RAMPS.orange![3] }, { t: DOT, c: RAMPS.purple![3] }]
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await $.prompt.submit({ text: 'y' } as any)
+  await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl('wsl-only.md'), old_string: 'two', new_string: 'three' } as any))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+  await ui.press({ key: 'replay-last' })
+  await clock.advance(10)
+  expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
+  // The read of the first answer stays while the second plays; the edit's dot is in from the start of its step.
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md')).some((d: any) => d.c === RAMPS.purple![3])).toBe(true)
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+  await clock.advance(5 * TICK)
+  expect(JSON.stringify(await ui.drawn())).toContain('■ 1/1')
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+  await clock.advance(10_000)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('■ 1/1')
+  expect(dotsOf(rowOf(await specs(ui), 'wsl-only.md'))).toEqual(both)
+})
+
+// A removed folder is no file: once the answer settles it leaves with its files, no struck row among the files.
+test('a shell rm of a folder leaves no struck row for the folder once the answer settles', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
+  const root = DIRS[WSL_ROOT]!
+  const db = DIRS[`${WSL_ROOT}/database`]!
+  try {
+    const { clock, gate, ui } = await litWorld($, on)
+    await $.prompt.submit({ text: 'x' } as any)
+    const call = $.tool.call({ tool: 'Bash', command: `rm -rf '${atWsl('database')}'` } as any)
+    await clock.advance(50)
+    DIRS[WSL_ROOT] = root.filter(([name]) => name !== 'database')
+    delete DIRS[`${WSL_ROOT}/database`]
+    gate.release()
+    await call
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    const rows = await specs(ui)
+    expect(rowOf(rows, 'database')).toBeUndefined()
+    expect(rowOf(rows, 'schema.sql')).toBeUndefined()
+    expect(rows.some(r => r.id === '')).toBe(false)
+  } finally {
+    DIRS[WSL_ROOT] = root
+    DIRS[`${WSL_ROOT}/database`] = db
+  }
+})
+
+test('a long name is cut with … so the name, its dots and the date fit the width', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
+  const root = DIRS[WSL_ROOT]!
+  const long = 'a-name-of-forty-characters-for-the-cut.md'
+  const width = 40
+  DIRS[WSL_ROOT] = [...root, [long, 'file']]
+  try {
+    const { clock, gate, read, ui } = await litWorld($, on, { ...props, bodyColumns: width })
+    await $.prompt.submit({ text: 'x' } as any)
+    await command(clock, gate, read(long))
+    await command(clock, gate, $.tool.call({ tool: 'Edit', file_path: atWsl(long), old_string: 'a', new_string: 'b' } as any))
+    await command(clock, gate, read(long))
+    await $.classic.Stop({ stop_hook_active: false } as any)
+    await clock.advance(10_000)
+    const row = rowOf(await specs(ui), long)
+    expect(dotsOf(row).length).toBe(3)
+    const name = row.left.find((s: any) => s.t.endsWith('…'))
+    expect(long.startsWith(name?.t.slice(0, -1))).toBe(true)
+    // Indent, caret, glyph and name on the left; dots, date and badge on the right: all inside the width.
+    const used = [...row.left, ...row.right].reduce((n: number, s: any) => n + s.t.length, 0)
+    expect(used).toBeLessThan(width + 1)
+  } finally {
+    DIRS[WSL_ROOT] = root
   }
 })

@@ -40,6 +40,7 @@ import {
 import { inRepo, linuxOf, mentions, paneId, resolveRepo, titleOf, toUnc } from './wsl'
 import { type Blind, insideSession, shellBlind, shellReads, shellWrites, type Target, writeTargets } from './detect'
 import { type Card, CARD_ROWS, drawCard } from './card'
+import { DOT, type DotsLimit, type DotsOrder, dotSegs, folders, histories } from './dots'
 import { BRANCH_ROW, CATCH, type Frame, holdGit, type Kind, kindOf, lineDelta, LIVE, LIVE_QUEUE, namesOf, plan, rampOf, record, RUSH, splitStep, type Step, type StepFile, stepsFor, ticksOf, TIMING } from './replay'
 
 const THEME = { plugin: 'trail', key: 'theme' } as const
@@ -101,6 +102,9 @@ let readsToo = true
 let diagnose = false
 // Phase 9: a folder with more direct children than this opens folded (0 turns the fold off).
 let bigFolder = 200
+// The dots after a file's name: how many before the row goes compact, and their order.
+let dotsLimit: DotsLimit = 8
+let dotsOrder: DotsOrder = 'time'
 // Replay skin: classic is the one-light-per-command player kept as it was; modern plays each step as frames.
 let replayAnimation: 'classic' | 'modern' = 'modern'
 // liveAnimation (modern only): animated plays each live light as the short replay of its step; instant lights at once, as before.
@@ -181,6 +185,8 @@ type Player = {
 
 // classic uses index, total, token and timer only; modern also plays each step's frames.
 type Replay = Player & {
+  // The steps it plays: the dots show only the ones played so far.
+  steps: Step[]
   index: number
   total: number
   token: number
@@ -635,7 +641,7 @@ async function reset($: EngineInterface, s: Instance, focus = false) {
   s.searchIndex = null
   s.sizeEpoch += 1
   s.sizeQueue = []
-  await put($, s, () => ({ ...emptyTree(s.repo.root), showHidden: prev.showHidden, onlyChanged: prev.onlyChanged ?? false, showSize: prev.root ? prev.showSize : sizeDefault }))
+  await put($, s, () => ({ ...emptyTree(s.repo.root), showHidden: prev.showHidden, onlyChanged: prev.onlyChanged ?? false, onlyDots: prev.onlyDots ?? false, showSize: prev.root ? prev.showSize : sizeDefault }))
   const opened = focus || !s.noDock ? await openPane($, s, focus) : null
   await loadDirs($, s, [s.repo.root])
   await detectRepo($, s)
@@ -934,10 +940,17 @@ async function play($: EngineInterface, s: Instance, scope: 'last' | 'all'): Pro
   forgetLit(s)
   const token = ++replayToken
   const modern = replayAnimation === 'modern'
-  s.replay = { index: 0, total: steps.length, token, timer: null, modern, step: null, frames: [], at: 0, bar: null, hidden: new Set(), kids: {}, shade: {}, ramps: {}, names: {}, icon: null, marks: {}, counts: {}, settled: {}, ghosts: [] }
+  s.replay = { steps, index: 0, total: steps.length, token, timer: null, modern, step: null, frames: [], at: 0, bar: null, hidden: new Set(), kids: {}, shade: {}, ramps: {}, names: {}, icon: null, marks: {}, counts: {}, settled: {}, ghosts: [] }
   await patch($, s, () => DARK)
   if (modern) await playModern($, s, steps, token)
   else await playClassic($, s, steps, token)
+}
+
+// The files whose last step in the trail removed them; a removed folder is kept as nothing.
+function goneOf(trail: Step[]): string[] {
+  const last = new Map<string, boolean>()
+  for (const step of trail) for (const p of Object.keys(step.tones)) last.set(p, Boolean(step.files?.[p]?.gone && !step.files[p]?.dir))
+  return [...last].filter(([, gone]) => gone).map(([p]) => p)
 }
 
 // The rows the pane draws: the replay's hidden rows out, its ghosts in among their old siblings. A ghost whose row
@@ -949,7 +962,9 @@ function paneRows(s: Instance, t: FileTree, r: Player | null): { rows: Row[]; gh
   const rows = hidden?.size ? all.filter(x => !hidden.has(x.node.id)) : all
   const ghosts = new Set<string>()
   const phantoms = new Set<string>()
-  const extra = [...(r?.ghosts ?? []), ...(r?.phantoms ?? [])]
+  // Outside a replay, a file the session removed stays as a ghost: once gone from disk, nothing else tells it was there.
+  const kept = r && 'index' in r ? [] : goneOf(s.trail)
+  const extra = [...new Set([...(r?.ghosts ?? []), ...(r?.phantoms ?? []), ...kept])]
   const there = extra.length ? new Set(all.map(x => x.node.id)) : null
   for (const g of extra) {
     if (there?.has(g) || hidden?.has(g)) continue
@@ -961,7 +976,7 @@ function paneRows(s: Instance, t: FileTree, r: Player | null): { rows: Row[]; gh
     let i = at + 1
     while (i < rows.length && rows[i]!.depth >= depth && !(rows[i]!.depth === depth && siblingOrder(node, rows[i]!.node) < 0)) i++
     rows.splice(i, 0, { node, depth, open: false })
-    if (r?.ghosts.includes(g)) ghosts.add(g)
+    if (r?.ghosts.includes(g) || kept.includes(g)) ghosts.add(g)
     else phantoms.add(g)
   }
   return { rows, ghosts, phantoms }
@@ -1473,12 +1488,12 @@ async function lightEarly($: EngineInterface, e: { tool: string }, epoch: number
     if (!Object.keys(tones).length) continue
     await revealPaths($, inst, Object.keys(tones))
     // A file not in the tree yet (a Write about to create it) has no row to play on: its result lights it, born.
-    const have = new Set((await get($, inst)).nodes.map(n => n.id))
+    const have = new Map((await get($, inst)).nodes.map(n => [n.id, n.kind]))
     for (const p of Object.keys(tones)) if (!have.has(p)) delete tones[p]
     if (!Object.keys(tones).length) continue
     // A file tool's write is an edit before its result says how many lines: pencil and orange from the first frame.
     // A shell removal is gone the same way: × and the red ramp from the first frame, its result confirming it.
-    const files: Record<string, StepFile> = file && e.tool !== 'Read' ? Object.fromEntries(Object.keys(tones).map(p => [p, { edit: true }])) : Object.fromEntries(Object.keys(tones).filter(p => removed.has(p)).map(p => [p, { gone: true }]))
+    const files: Record<string, StepFile> = file && e.tool !== 'Read' ? Object.fromEntries(Object.keys(tones).map(p => [p, { edit: true }])) : Object.fromEntries(Object.keys(tones).filter(p => removed.has(p)).map(p => [p, { gone: true, ...(have.get(p) === 'dir' ? { dir: true } : {}) }]))
     await flash($, inst, tones, epoch, Object.keys(files).length ? files : undefined, names)
   }
 }
@@ -1858,7 +1873,7 @@ async function toggleFlat($: EngineInterface, s: Instance, dir: string): Promise
 
 // A big folder open and not flat, with no filter choosing its rows: the one `right` shows whole.
 function foldedDir(t: FileTree, n: FileNode): boolean {
-  if (n.kind !== 'dir' || !t.expanded.includes(n.id) || t.flat.includes(n.id) || t.query.trim() || t.onlyChanged) return false
+  if (n.kind !== 'dir' || !t.expanded.includes(n.id) || t.flat.includes(n.id) || t.query.trim() || t.onlyChanged || t.onlyDots) return false
   return isBig(t.nodes.filter(k => k.parent === n.id && (t.showHidden || !k.hidden)), bigFolder)
 }
 
@@ -2011,7 +2026,7 @@ async function cameAndWent($: EngineInterface, s: Instance, snaps: Snap[]): Prom
 
 // Before the command: whether each path it names was there (removes: the ones it removes) and the folders it writes
 // into without naming the files.
-type Before = { existed: Map<string, boolean>; removes: Set<string>; snaps: Snap[] }
+type Before = { existed: Map<string, boolean>; dirs: Set<string>; removes: Set<string>; snaps: Snap[] }
 
 async function afterTool($: EngineInterface, s: Instance, pending: Pending | null, command: string, cwd: string, since: Since, result: ToolResult, ps: boolean, epoch: number, before?: Before): Promise<void> {
   if (pending && result.deny) {
@@ -2038,7 +2053,7 @@ async function afterTool($: EngineInterface, s: Instance, pending: Pending | nul
   if (before) {
     for (const [p, was] of before.existed) {
       const is = await exists($, p)
-      if (was !== is && !result.isError) files[p] = is ? { born: true } : { gone: true }
+      if (was !== is && !result.isError) files[p] = is ? { born: true } : { gone: true, ...(before.dirs.has(p) ? { dir: true } : {}) }
       // The early light took the removal for done and the file is still there: its step is no deletion.
       else if (was && is && before.removes.has(p)) files[p] = { gone: false }
     }
@@ -2254,12 +2269,21 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const k = rp.shade[id]
     return { ...spec, left: [{ t: '▌', c: k ? rampFor(id)[k - 1] : theme.muted }, ...spec.left], bg: barBg }
   }
+  // The dots of a file: over the session's steps, or the steps before the replay plus the ones it played so far.
+  const first = s.replay?.steps[0]?.epoch ?? 0
+  const played = s.replay ? [...s.trail.filter(one => one.epoch < first), ...s.replay.steps.slice(0, s.replay.index)] : s.trail
+  // Every history in one pass a frame: a walk of the trail per row cost 50 ms a frame.
+  const hist = histories(played)
+  const sums = folders(hist, t.root)
+  const dotsFor = (id: string) => dotSegs(hist.get(id) ?? [], dotsLimit, dotsOrder)
+  // A closed folder sums the files under it, always compact: one dot a kind with its count.
+  const folderDots = (dir: string) => (dotsLimit === 'off' ? [] : dotSegs(sums.get(dir) ?? [], 'compact', dotsOrder))
   const rowSpec = (r: (typeof rows)[number]): RowSpec => {
     const n = r.node
     // id '' keeps the ghost out of clicks, copy and the cursor.
     if (ghosts.has(n.id)) {
       const c = tint(n.id) ?? theme.urgent
-      return barred({ id: '', left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, iconOf(n.id) ?? { t: '· ', c }, { t: n.name, c, s: true }, ...chipsOf(n.id)], right: [] }, n.id)
+      return barred({ id: '', left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, iconOf(n.id) ?? { t: '· ', c }, { t: n.name, c, s: true }, ...chipsOf(n.id)], right: dotsFor(n.id) }, n.id)
     }
     // A hidden stretch of a folded folder: its count at the children's glyph column, nothing else.
     if (n.kind === 'fold') return barred({ id: n.id, left: [{ t: '  '.repeat(r.depth) }, { t: '  ' }, { t: `… ${enUS.format(r.count ?? 0)} files`, c: theme.muted }], right: [] }, n.id)
@@ -2301,12 +2325,15 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
     const dels = Boolean(loc && loc[1] > 0)
     const locText = `${adds ? ` +${loc![0]}` : ''}${dels ? ` -${loc![1]}` : ''}`
     const dirCounts = n.kind === 'dir' ? countSegs(t.counts[n.id]) : []
+    // The dots of a file: over the session's steps, or the steps the replay played so far.
+    const dots = n.kind === 'dir' ? (r.open ? [] : folderDots(n.id)) : dotsFor(n.id)
+    const dotsText = dots.map(d => d.t).join('')
     const badge = dirCounts.length ? '' : status ? ` ${status}` : isIgnored ? (unicode ? ' ⊘' : ' \u{f05e}') : '  '
     const countsText = dirCounts.map(c => c.t).join('')
     // A big folder's header carries its count after the name: the click target of flat, accent while it is flat.
     const total = n.kind === 'dir' && isBig({ length: counts.get(n.id) ?? 0 }, bigFolder) ? `·${enUS.format(counts.get(n.id) ?? 0)}` : ''
     const totalSeg: Seg[] = total ? [{ t: total, c: t.flat.includes(n.id) ? theme.accent : theme.muted, flat: n.id }] : []
-    const cols = Math.max(4, width - r.depth * 2 - 6 - (rp ? 1 : 0) - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length - total.length)
+    const cols = Math.max(4, width - r.depth * 2 - 6 - (rp ? 1 : 0) - (meta ? meta.length + 1 : 0) - locText.length - badge.length - countsText.length - total.length - dotsText.length)
     const name = n.name.length > cols ? n.name.slice(0, cols - 1) + '…' : n.name
     const caret = n.kind === 'dir' ? (unicode ? (r.open ? '▾' : '▸') : r.open ? CHEVRON_OPEN : CHEVRON_CLOSED) + ' ' : '  '
     const isRepo = n.kind === 'dir' && n.id === t.top
@@ -2323,7 +2350,7 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
       // The chips come after the name, in the box the right side cuts: the name never shortens for them (cols stays).
       ...(n.kind === 'dir' ? [] : chipsOf(n.id)),
     ]
-    const right: Seg[] = []
+    const right: Seg[] = [...dots]
     if (meta) right.push({ t: ` ${meta}`, c: theme.muted })
     // The replay's own count in the mock's colors.
     if (adds) right.push({ t: ` +${loc![0]}`, c: counted ? RAMPS.green![3] : ADD_COLOR })
@@ -2471,13 +2498,16 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
           <Button
             key="changed"
             plain
-            dimColor={!t.onlyChanged}
-            label={t.onlyChanged ? '± changed only' : '±'}
+            dimColor={!t.onlyChanged && !t.onlyDots}
+            label={t.onlyChanged ? '± changed only' : t.onlyDots ? `${DOT} dots only` : '±'}
             onPress={() =>
               void (async () => {
-                const on = !(await get($, s)).onlyChanged
-                await patch($, s, () => ({ onlyChanged: on, scroll: null }))
-                if (on) await revealChanged($, s)
+                // Three modes: all, changed in git, then only the rows with dots (a frequent commit empties the second).
+                const cur = await get($, s)
+                const next = cur.onlyChanged ? { onlyChanged: false, onlyDots: true } : cur.onlyDots ? { onlyChanged: false, onlyDots: false } : { onlyChanged: true, onlyDots: false }
+                await patch($, s, () => ({ ...next, scroll: null }))
+                if (next.onlyChanged) await revealChanged($, s)
+                if (next.onlyDots) await revealPaths($, s, [...touchedOf(s, await get($, s))].slice(0, CHANGED_REVEAL_LIMIT))
               })()
             }
           />
@@ -2832,6 +2862,9 @@ export const register: Register = (on, options) => {
   opening = options?.opening === 'card' ? 'card' : 'auto'
   const big = parseInt(String(options?.bigFolder ?? ''), 10)
   bigFolder = Number.isInteger(big) && big >= 0 ? big : 200
+  const dots = parseInt(String(options?.dots ?? ''), 10)
+  dotsLimit = options?.dots === 'off' || options?.dots === 'compact' ? options.dots : Number.isInteger(dots) && dots > 0 ? dots : 8
+  dotsOrder = options?.dotsOrder === 'kind' ? 'kind' : 'time'
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
   sizeDefault = options?.column === 'size'
   on('session.start', async ($, e, next) => {
@@ -2988,8 +3021,10 @@ export const register: Register = (on, options) => {
             return p && p !== inst.repo.root ? [{ p, gone: Boolean(t.gone) }] : []
           })
           const paths = [...new Set(mine.map(x => x.p))]
+          const stats = await Promise.all(paths.map(async p => [p, await $.fs.stat(p).then(x => x.kind, () => '')] as const))
           return {
-            existed: new Map(await Promise.all(paths.map(async p => [p, await exists($, p)] as const))),
+            existed: new Map(stats.map(([p, kind]) => [p, kind !== ''])),
+            dirs: new Set(stats.filter(([, kind]) => kind === 'dir').map(([p]) => p)),
             removes: new Set(mine.filter(x => x.gone).map(x => x.p)),
             snaps: await snapshot($, inst, blind),
           }

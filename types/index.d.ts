@@ -99,6 +99,7 @@ declare module 'claude-code' {
       turn: number
       theme: Theme
       repos: Record<string, Repo>
+      trailed: Record<string, Repo>
       sessionTabDone: boolean
       startCwd: string
       quiet: Repo[]

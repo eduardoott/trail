@@ -133,6 +133,7 @@ let pointer = true
 let home = ''
 let platform: Promise<'linux' | 'darwin' | 'win32'> | null = null
 const instances = new Map<string, Instance>()
+const trailed = new Set<string>()
 // One card at a time: a subagent's call waits for the one on screen.
 let held: Card | null = null
 let pauseAt = 0
@@ -486,6 +487,8 @@ const ACTIVITY = { plugin: 'trail', key: 'activity' } as const
 // The trail and the turn live in $.state too: a reload starts the module over, and the replay keeps what came before it.
 const TRAIL = { plugin: 'trail', key: 'trail' } as const
 const TURN = { plugin: 'trail', key: 'turn' } as const
+// The repos with a trail this session, kept after their tab closes: /trail open all reopens them.
+const TRAILED = { plugin: 'trail', key: 'trailed' } as const
 
 async function get($: EngineInterface, s: Instance): Promise<FileTree> {
   return { ...emptyTree(''), ...(await $.state.get({ ...TREE, id: s.id })).value }
@@ -847,6 +850,10 @@ async function flash($: EngineInterface, s: Instance, tones: Record<string, stri
   const shut = [...new Set(unique.filter(id => id !== BRANCH_ROW).flatMap(id => ancestorsOf(id, before.root)).filter(dir => !open.has(dir)))]
   s.trail = record(s.trail, { epoch, turn, tones: files ? kept : tones, ...(files ? { files } : {}), ...(shut.length ? { shut } : {}), ...(names?.length ? { names } : {}), ...(git ? { git } : {}) })
   void $.state.set({ ...TRAIL, id: s.id }, s.trail)
+  if (!trailed.has(s.id)) {
+    trailed.add(s.id)
+    void update($, TRAILED, cur => ({ ...(cur ?? {}), [s.id]: s.repo }))
+  }
   // liveAnimation animated plays a gone file too, as the replay does: its row stays, a ghost once the tree lost it, until its
   // step played it out. The instant light has no row to light.
   const gone = liveOn() && files ? Object.keys(files).filter(p => files[p]?.gone && !(p in tones) && inside(before.root, p)) : []
@@ -2600,6 +2607,8 @@ async function openRepo($: EngineInterface, repo: Repo, focus: boolean) {
   if (existing) return { inst: existing, opened: await $.ui.open({ id, title: titleOf(repo), ...(focus ? { focus: true } : {}) }) }
   const inst = makeInstance(repo)
   instances.set(id, inst)
+  // A tab opened again gets back the dots its repo had before it closed.
+  await revive($, inst)
   return { inst, opened: await reset($, inst, focus) }
 }
 
@@ -2640,7 +2649,7 @@ function fileOf(e: object): string {
   return ''
 }
 
-const USAGE = 'usage: /trail [open <folder> | close <root> | forget <root | all>]'
+const USAGE = 'usage: /trail [open <folder | all> | close <root> | forget <root | all>]'
 
 // A plain reopen is tried first so the prompt keeps the keyboard; focus is the fallback.
 async function bringToFront($: EngineInterface, s: Instance): Promise<void> {
@@ -2868,7 +2877,7 @@ export const register: Register = (on, options) => {
   glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
   sizeDefault = options?.column === 'size'
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'trail', description: 'File tree tabs per git repo, the session\'s and outside ones; args: [open <folder> | close <root> | forget <root | all>]' })
+    await $.command.register({ name: 'trail', description: 'File tree tabs per git repo, the session\'s and outside ones; args: [open <folder | all> | close <root> | forget <root | all>]' })
     const windows = (await $.env.get('OS')) === 'Windows_NT'
     useDrives(windows)
     startCwd = (await $.state.get(START_CWD)).value || posix(e.cwd)
@@ -2932,6 +2941,15 @@ export const register: Register = (on, options) => {
       const terminal = await $.session.surfaces().then(s => s.includes('terminal'), () => true)
       if (terminal && !e.presentation.isFullscreen) return { text: 'trail shows the tab on the side, which needs the fullscreen layout. Run /tui fullscreen and then /trail open.' }
       if (terminal && e.presentation.columns < 110) return { text: 'trail shows the tab on the side, which needs a terminal of at least 110 columns.' }
+      if (arg.trim() === 'all') {
+        const open = new Set((await $.ui.panes().catch(() => [])).map(p => p.id))
+        const back = Object.entries((await $.state.get(TRAILED)).value ?? {}).filter(([id]) => !open.has(id))
+        for (const [, repo] of back) {
+          await hush($, repo, false)
+          await openRepo($, repo, false)
+        }
+        return { text: back.length ? `Opened again: ${back.map(([, r]) => titleOf(r)).join(', ')}.` : 'Every repo with dots already has its tab open.' }
+      }
       const t0 = await $.clock.now()
       const found = await resolveRepo($, arg, await cwdOf($))
       if ('error' in found) return { text: `Did not open: ${found.error}.` }

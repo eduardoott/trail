@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { DOT } from '../hooks/dots'
 import { paneId } from '../hooks/wsl'
 import { RAMPS, TONES } from '../hooks/git'
 import { BRANCH_ROW, CATCH, route, RUSH, TIMING } from '../hooks/replay'
@@ -249,7 +250,7 @@ async function litWorld($: any, on: any, pane = props) {
   // A lit name shimmers one character per Text, so the whole name no longer appears in one piece.
   const lit = async (name: string) => !JSON.stringify(await ui.drawn({ in: 'rows' })).includes(name)
   const read = (name = 'wsl-only.md') => $.tool.call({ tool: 'Read', file_path: `\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo\\${name}` } as any)
-  return { clock, gate, lit, read, ui }
+  return { clock, gate, lit, opens, read, ui }
 }
 
 // One command, start to end, then the answer ends: what the person sees before pressing replay.
@@ -2801,7 +2802,6 @@ test('the tool still runs when the session cwd rejects before a command in an op
 })
 
 // The dots: one per thing Claude did to the file over the session, before the date column.
-import { DOT } from '../hooks/dots'
 const dotsOf = (row: any) => (row?.right ?? []).filter((s: any) => s.t.trimStart().startsWith(DOT) || /^\d+$/.test(s.t))
 
 test('a Read and an Edit leave two dots before the date, the read on the right, kept past the end of the answer', { options: { sessionTab: 'off', replayAnimation: 'modern', liveAnimation: 'instant' }, timeoutMs: 30_000 }, async ($, on) => {
@@ -2961,4 +2961,22 @@ test('a long name is cut with … so the name, its dots and the date fit the wid
   } finally {
     DIRS[WSL_ROOT] = root
   }
+})
+
+test('/trail open all opens again the closed tabs that have dots, the dots back', { options: { sessionTab: 'off', replayAnimation: 'modern' }, timeoutMs: 30_000 }, async ($, on) => {
+  const { clock, gate, opens, read, ui } = await litWorld($, on)
+  const id = paneId('wsl:/home/user/my-repo')
+  await $.prompt.submit({ text: 'x' } as any)
+  await command(clock, gate, read('wsl-only.md'))
+  await $.classic.Stop({ stop_hook_active: false } as any)
+  await clock.advance(10_000)
+  await $.command.run({ ...openCmd(''), args: `close ${WSL_ROOT}` })
+  opens.splice(0)
+  const again = await $.command.run(openCmd('all'))
+  await clock.settle()
+  expect(JSON.stringify(again)).toContain('WSL my-repo')
+  expect(opens.map((o: any) => o.id)).toEqual([id])
+  expect(JSON.stringify(await ui.drawn({ in: 'rows' }))).toContain(DOT)
+  const none = await $.command.run(openCmd('all'))
+  expect(JSON.stringify(none)).toContain('already has its tab open')
 })

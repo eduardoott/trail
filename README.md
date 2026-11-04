@@ -30,6 +30,7 @@ In the terminal, the tab needs the fullscreen layout (`/tui fullscreen`) and at 
 
 ```
 /trail open <folder>          opens the tab of a repo
+/trail open all               opens again every repo with dots this session, its dots back
 /trail close <root>           closes the tab of that repo
 /trail forget <root | all>    forgets the permission given in the card
 ```

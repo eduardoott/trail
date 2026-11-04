@@ -214,7 +214,11 @@ test('the ± button keeps only what git counts as changed, opening the folders t
     expect(JSON.stringify(await ui.drawn())).toContain('changed only')
     await ui.press({ key: 'changed' })
     await clock.settle()
+    expect(JSON.stringify(await ui.drawn())).toContain('dots only')
+    await ui.press({ key: 'changed' })
+    await clock.settle()
     expect(JSON.stringify(await ui.drawn())).not.toContain('changed only')
+    expect(JSON.stringify(await ui.drawn())).not.toContain('dots only')
     expect(JSON.stringify(await ui.drawn({ in: 'rows' }))).not.toContain('intacto-')
   } finally {
     delete DIRS[src]

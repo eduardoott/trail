@@ -39,6 +39,8 @@ export type FileTree = {
   showHidden: boolean
   showSize: boolean
   onlyChanged: boolean
+  // The third mode of the ± button: only the rows with dots, the files the session's steps touched.
+  onlyDots?: boolean
   dirSizes: Record<string, number>
   git: Record<string, string>
   diff: Record<string, [number, number]>

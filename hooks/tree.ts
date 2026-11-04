@@ -1,4 +1,4 @@
-// Copied from filetree 0.2.24 (Kurt Buhler), MIT License: see ../LICENSE. Changed: the onlyChanged filter in visibleRows.
+// Copied from filetree 0.2.24 (Kurt Buhler), MIT License: see ../LICENSE. Changed: the onlyChanged and onlyDots filters in visibleRows.
 import type { Branch, FileNode, FileTree, Theme } from '../types'
 import { stronger } from './icons'
 
@@ -366,7 +366,16 @@ export function visibleRows(t: FileTree, ctx?: FoldCtx): Row[] {
   // A dir stays while git counts something below it; a file inside an untracked dir has no status of its own.
   const changed = (n: FileNode) =>
     Boolean(t.git[n.id]) || (n.kind === 'dir' ? (t.counts[n.id] ?? []).some(c => c > 0) : t.untrackedDirs.some(d => n.id.startsWith(`${d}/`)))
-  const filtered = Boolean(keep) || t.onlyChanged
+  // A dir stays while a touched file sits below it.
+  let dotted: Set<string> | null = null
+  if (t.onlyDots) {
+    dotted = new Set()
+    for (const id of ctx?.touched ?? []) {
+      dotted.add(id)
+      for (const a of ancestorsOf(id, t.root)) dotted.add(a)
+    }
+  }
+  const filtered = Boolean(keep) || t.onlyChanged || Boolean(dotted)
   const open = new Set(t.expanded)
   const rows: Row[] = []
   // With a query or the ± filter the fold does not apply: the filter already picks the rows. The root never folds:
@@ -381,6 +390,7 @@ export function visibleRows(t: FileTree, ctx?: FoldCtx): Row[] {
       }
       if (keep && !keep.has(n.id)) continue
       if (t.onlyChanged && !changed(n)) continue
+      if (dotted && !dotted.has(n.id)) continue
       const isOpen = n.kind === 'dir' && (filtered ? kids.has(n.id) : open.has(n.id))
       rows.push({ node: n, depth, open: isOpen })
       if (isOpen) walk(n.id, depth + 1)

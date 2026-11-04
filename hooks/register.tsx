@@ -40,7 +40,7 @@ import {
 import { inRepo, linuxOf, mentions, paneId, resolveRepo, titleOf, toUnc } from './wsl'
 import { type Blind, insideSession, shellBlind, shellReads, shellWrites, type Target, writeTargets } from './detect'
 import { type Card, CARD_ROWS, drawCard } from './card'
-import { type DotsLimit, type DotsOrder, dotSegs, folders, histories } from './dots'
+import { DOT, type DotsLimit, type DotsOrder, dotSegs, folders, histories } from './dots'
 import { BRANCH_ROW, CATCH, type Frame, holdGit, type Kind, kindOf, lineDelta, LIVE, LIVE_QUEUE, namesOf, plan, rampOf, record, RUSH, splitStep, type Step, type StepFile, stepsFor, ticksOf, TIMING } from './replay'
 
 const THEME = { plugin: 'trail', key: 'theme' } as const
@@ -641,7 +641,7 @@ async function reset($: EngineInterface, s: Instance, focus = false) {
   s.searchIndex = null
   s.sizeEpoch += 1
   s.sizeQueue = []
-  await put($, s, () => ({ ...emptyTree(s.repo.root), showHidden: prev.showHidden, onlyChanged: prev.onlyChanged ?? false, showSize: prev.root ? prev.showSize : sizeDefault }))
+  await put($, s, () => ({ ...emptyTree(s.repo.root), showHidden: prev.showHidden, onlyChanged: prev.onlyChanged ?? false, onlyDots: prev.onlyDots ?? false, showSize: prev.root ? prev.showSize : sizeDefault }))
   const opened = focus || !s.noDock ? await openPane($, s, focus) : null
   await loadDirs($, s, [s.repo.root])
   await detectRepo($, s)
@@ -1873,7 +1873,7 @@ async function toggleFlat($: EngineInterface, s: Instance, dir: string): Promise
 
 // A big folder open and not flat, with no filter choosing its rows: the one `right` shows whole.
 function foldedDir(t: FileTree, n: FileNode): boolean {
-  if (n.kind !== 'dir' || !t.expanded.includes(n.id) || t.flat.includes(n.id) || t.query.trim() || t.onlyChanged) return false
+  if (n.kind !== 'dir' || !t.expanded.includes(n.id) || t.flat.includes(n.id) || t.query.trim() || t.onlyChanged || t.onlyDots) return false
   return isBig(t.nodes.filter(k => k.parent === n.id && (t.showHidden || !k.hidden)), bigFolder)
 }
 
@@ -2498,13 +2498,16 @@ async function render($: EngineInterface, s: Instance, e: RenderInput) {
           <Button
             key="changed"
             plain
-            dimColor={!t.onlyChanged}
-            label={t.onlyChanged ? '± changed only' : '±'}
+            dimColor={!t.onlyChanged && !t.onlyDots}
+            label={t.onlyChanged ? '± changed only' : t.onlyDots ? `${DOT} dots only` : '±'}
             onPress={() =>
               void (async () => {
-                const on = !(await get($, s)).onlyChanged
-                await patch($, s, () => ({ onlyChanged: on, scroll: null }))
-                if (on) await revealChanged($, s)
+                // Three modes: all, changed in git, then only the rows with dots (a frequent commit empties the second).
+                const cur = await get($, s)
+                const next = cur.onlyChanged ? { onlyChanged: false, onlyDots: true } : cur.onlyDots ? { onlyChanged: false, onlyDots: false } : { onlyChanged: true, onlyDots: false }
+                await patch($, s, () => ({ ...next, scroll: null }))
+                if (next.onlyChanged) await revealChanged($, s)
+                if (next.onlyDots) await revealPaths($, s, [...touchedOf(s, await get($, s))].slice(0, CHANGED_REVEAL_LIMIT))
               })()
             }
           />

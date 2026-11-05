@@ -11,7 +11,7 @@ A Claude Code mod: a file tree tab for each git repo Claude works in, the sessio
 - The `±` button cycles three modes: all files, only the files changed in git, and only the files with dots (what Claude touched in the session, even after a commit); the `Σ` button toggles the right column between date and size.
 - Dots: before the right column, one dot per thing Claude did to the file over the session, in the colour of the action (a commit is green, a shell write teal), the first against the column. The same thing done again right after, inside one answer, is one dot. Past 8 dots the row goes compact: one dot a kind with its count, as `•12`, the count in a quieter tone. A file removed in the session stays in its folder, struck, with its red dot. A closed folder sums the dots of the files under it, one a kind with its count.
 - Big folders open folded: only the files Claude touched, the ones changed in git and 3 neighbours of each are shown, the rest collapse into clickable "… N files" blocks, and the count in the header opens the whole folder.
-- Card mode: instead of opening by itself, a card asks permission on the first write in an outside repo.
+- Card mode: instead of opening by itself, a card asks permission on the first write in an outside repo. The card is a UI aid, not a sandbox: it does not fire in `-p` mode, outside a git repo, or for writes done through other programs.
 
 ## Install
 

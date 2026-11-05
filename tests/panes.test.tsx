@@ -129,6 +129,22 @@ test('two repos open two panes of one mod, each drawing its own root and git', {
   expect(JSON.stringify(list)).toContain(`win:${WIN_ROOT}`)
 })
 
+test('git never lets repo config run a program: fsmonitor off on every call, no external diff or textconv', { options: { sessionTab: 'off' }, timeoutMs: 20_000 }, async ($, on) => {
+  const ran: string[][] = []
+  const clock = world(on, ran, [])
+  await $.session.start({ cwd: 'C:/Users/user/Documents/Code/project', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  await $.command.run(openCmd('\\\\wsl.localhost\\Ubuntu\\home\\user\\my-repo'))
+  await $.command.run(openCmd(WIN_ROOT))
+  await clock.settle()
+  const gits = ran.filter(r => r.includes('git') && r.includes('--no-optional-locks'))
+  const diffs = gits.filter(r => r[r.indexOf('-C') + 2] === 'diff')
+  expect(gits.some(r => r.includes('status'))).toBe(true)
+  expect(diffs.length > 0).toBe(true)
+  for (const r of gits) expect(r.join(' ')).toContain('-c core.fsmonitor=false')
+  for (const r of diffs) expect(r).toContain('--no-ext-diff')
+})
+
 test('a folder outside any git repo opens nothing', { options: { sessionTab: 'off' } }, async ($, on) => {
   const opens: any[] = []
   const clock = world(on, [], opens, true)

@@ -554,8 +554,8 @@ async function loadDirs($: EngineInterface, s: Instance, dirs: string[]): Promis
 
 // The Windows git complains about ownership on \\wsl.localhost and is slow there, so WSL repos run the distro's git.
 async function git($: EngineInterface, s: Instance, cwd: string, args: string[], timeoutMs = 20_000) {
-  if (s.repo.kind === 'wsl') return $.process.run(['wsl.exe', '-d', s.repo.distro, '-e', 'git', '--no-optional-locks', '-C', linuxOf(s.repo, cwd), ...args], { timeoutMs })
-  return $.process.run(['git', '--no-optional-locks', '-C', cwd, ...args], { timeoutMs, env: { GIT_OPTIONAL_LOCKS: '0' } })
+  if (s.repo.kind === 'wsl') return $.process.run(['wsl.exe', '-d', s.repo.distro, '-e', 'git', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=', '-c', 'diff.external=', '-C', linuxOf(s.repo, cwd), ...args], { timeoutMs })
+  return $.process.run(['git', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=', '-c', 'diff.external=', '-C', cwd, ...args], { timeoutMs, env: { GIT_OPTIONAL_LOCKS: '0' } })
 }
 
 async function detectRepo($: EngineInterface, s: Instance): Promise<void> {
@@ -583,7 +583,7 @@ async function readGit($: EngineInterface, s: Instance): Promise<void> {
     if (status.exitCode !== 0) return
     const parsed = parseGit(status.stdout, root, t.prefix)
     const diff: Record<string, [number, number]> = {}
-    const head = await git($, s, root, ['diff', 'HEAD', '--numstat', '-z', '--', '.'])
+    const head = await git($, s, root, ['diff', '--no-ext-diff', '--no-textconv', 'HEAD', '--numstat', '-z', '--', '.'])
     if (head.exitCode === 0) parseNumstat(head.stdout, root, t.prefix, diff)
     const files = { ...parsed.files }
     if (parsed.untrackedDirs.length) {
@@ -1582,7 +1582,7 @@ async function gitPaths($: EngineInterface, s: Instance, root: string, prefix: s
   try {
     const run = committed
       ? await git($, s, root, ['diff-tree', '--root', '--no-commit-id', '--name-only', '-r', '-z', 'HEAD'], 5_000)
-      : await git($, s, root, ['diff', '--cached', '--name-only', '-z'], 5_000)
+      : await git($, s, root, ['diff', '--no-ext-diff', '--no-textconv', '--cached', '--name-only', '-z'], 5_000)
     return run.exitCode === 0 ? run.stdout.split('\0').filter(Boolean).flatMap(rel => map(rel) ?? []) : []
   } catch {
     return []
